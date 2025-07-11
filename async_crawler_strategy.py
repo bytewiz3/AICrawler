@@ -3,6 +3,7 @@ from .browser_manager import BrowserManager
 from .models import AsyncCrawlResponse
 from typing import Union, List, Dict, Any, Optional
 from playwright.async_api import Page
+import time
 
 class AsyncPlaywrightStrategy:
   def __init__(self, browser_config: BrowserConfig = None):
@@ -41,6 +42,28 @@ class AsyncPlaywrightStrategy:
     config = config or CrawlerRunConfig()
     page, context = await self.browser_manager.get_page()
     js_execution_result = None
+    captured_requests = []
+
+    if config.capture_network_requests:
+      def handle_request_capture(request):
+        captured_requests.append({
+            "event_type": "request",
+            "url": request.url,
+            "method": request.method,
+            "resource_type": request.resource_type,
+            "timestamp": time.time()
+        })
+
+      def handle_response_capture(response):
+        captured_requests.append({
+           "event_type": "response",
+           "url": response.url,
+           "status": response.status,
+           "timestamp": time.time()
+        })
+      
+      page.on("request", handle_request_capture)
+      page.on("response", handle_response_capture)
 
     try:
         response = await page.goto(url=url, wait_until=config.wait_until, timeout=config.page_timeout)
@@ -53,9 +76,17 @@ class AsyncPlaywrightStrategy:
         html = await page.content()
         status_code = response.status if response else 200
 
-        return AsyncCrawlResponse(html=html, status_code=status_code, js_execution_result=js_execution_result)
+        return AsyncCrawlResponse(
+          html=html, 
+          status_code=status_code, 
+          js_execution_result=js_execution_result,
+          network_requests=captured_requests if config.capture_network_requests else None
+        )
     
     finally:
+      if config.capture_network_requests:
+        page.remove_listener("request", handle_request_capture)
+        page.remove_listener("response", handle_response_capture)
       await page.close()
       await context.close()
 
