@@ -4,6 +4,8 @@ from .models import AsyncCrawlResponse
 from typing import Union, List, Dict, Any, Optional
 from playwright.async_api import Page
 import time
+import base64
+from io import BytesIO
 
 class AsyncPlaywrightStrategy:
   def __init__(self, browser_config: BrowserConfig = None):
@@ -38,11 +40,20 @@ class AsyncPlaywrightStrategy:
         results.append({"success": False, "script": script, "error": str(e)})
     return {"success": all(r.get("success", False) for r in results), "results": results}
 
+  async def take_screenshot_naive(self, page: Page) -> str:
+    try:
+      screenshot_bytes = await page.screenshot(full_page=False)
+      return base64.b64encode(screenshot_bytes).decode("utf-8")
+    except Exception as e:
+      print(f"ERROR: Failed to take screenshot: {e}")
+      return ""
+
   async def crawl(self, url: str, config: Optional[CrawlerRunConfig] = None) -> AsyncCrawlResponse:
     config = config or CrawlerRunConfig()
     page, context = await self.browser_manager.get_page()
     js_execution_result = None
     captured_requests = []
+    screenshot_data = None
 
     if config.capture_network_requests:
       def handle_request_capture(request):
@@ -73,6 +84,13 @@ class AsyncPlaywrightStrategy:
           if not js_execution_result.get("success"):
             print(f"WARNING: JavaScript execution had issues: {js_execution_result.get('results')}")
 
+        if config.screenshot:
+          screenshot_data = await self.take_screenshot_naive(page)
+          if screenshot_data:
+            print(f"INFO: Screenshot captured for {url}. Data size: {len(screenshot_data) // 1024} KB")
+          else:
+            print(f"WARNING: No screenshot data captured for {url}.")
+
         html = await page.content()
         status_code = response.status if response else 200
 
@@ -80,7 +98,8 @@ class AsyncPlaywrightStrategy:
           html=html, 
           status_code=status_code, 
           js_execution_result=js_execution_result,
-          network_requests=captured_requests if config.capture_network_requests else None
+          network_requests=captured_requests if config.capture_network_requests else None,
+          screenshot=screenshot_data
         )
     
     finally:

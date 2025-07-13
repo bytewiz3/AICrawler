@@ -1,6 +1,7 @@
 import asyncio
 from .async_crawler_strategy import AsyncPlaywrightStrategy
 from .async_configs import CrawlerRunConfig
+import base64
 
 async def main():
   crawler = AsyncPlaywrightStrategy()
@@ -47,25 +48,42 @@ async def main():
     # print(f"JS Execution Result: {response_with_js_2.js_execution_result}")
     # print(f"HTML (first 60000 chars after potential click):\n{response_with_js_2.html[:60000]}...")
 
-    # Example 4: Crawl with network request capturing
-    print("\n--- Crawling with Network Capture ---")
-    config_with_network = CrawlerRunConfig(
-        capture_network_requests=True
-    )
-    response_with_network = await crawler.crawl(target_url, config=config_with_network)
+    # # Example 4: Crawl with network request capturing
+    # print("\n--- Crawling with Network Capture ---")
+    # config_with_network = CrawlerRunConfig(
+    #     capture_network_requests=True
+    # )
+    # response_with_network = await crawler.crawl(target_url, config=config_with_network)
 
-    print(f"Status Code: {response_with_network.status_code}")
-    print(f"JS Execution Result: {response_with_network.js_execution_result}")
-    if response_with_network.network_requests:
-        print(f"Captured {len(response_with_network.network_requests)} network events.")
-        # Print first 5 events for brevity
-        for i, event in enumerate(response_with_network.network_requests[:5]):
-            print(f"  Event {i+1}: Type={event['event_type']}, URL={event['url']}")
-        if len(response_with_network.network_requests) > 5:
-            print("  ... (more network events)")
+    # print(f"Status Code: {response_with_network.status_code}")
+    # print(f"JS Execution Result: {response_with_network.js_execution_result}")
+    # if response_with_network.network_requests:
+    #     print(f"Captured {len(response_with_network.network_requests)} network events.")
+    #     # Print first 5 events for brevity
+    #     for i, event in enumerate(response_with_network.network_requests[:5]):
+    #         print(f"  Event {i+1}: Type={event['event_type']}, URL={event['url']}")
+    #     if len(response_with_network.network_requests) > 5:
+    #         print("  ... (more network events)")
+    # else:
+    #     print("No network requests captured.")
+    # print(f"HTML (first 200 chars):\n{response_with_network.html[:200]}...")
+
+    # Example 5: Crawl with screenshot
+    print("\n--- Crawling with Screenshot ---")
+    config_with_screenshot = CrawlerRunConfig(
+        screenshot=True
+    )
+    response_with_screenshot = await crawler.crawl(target_url, config=config_with_screenshot)
+
+    print(f"Status Code: {response_with_screenshot.status_code}")
+    if response_with_screenshot.screenshot:
+        print(f"Screenshot data collected (base64 encoded, length: {len(response_with_screenshot.screenshot)}).")
+        with open("example_screenshot.png", "wb") as f:
+            f.write(base64.b64decode(response_with_screenshot.screenshot))
+        print("Screenshot saved to example_screenshot.png.")
     else:
-        print("No network requests captured.")
-    print(f"HTML (first 200 chars):\n{response_with_network.html[:200]}...")
+        print("No screenshot data captured.")
+    print(f"HTML (first 200 chars):\n{response_with_screenshot.html[:200]}...")
 
 if __name__ == "__main__":
     asyncio.run(main())
