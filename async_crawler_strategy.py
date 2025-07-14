@@ -2,15 +2,16 @@ from .async_configs import BrowserConfig, CrawlerRunConfig
 from .browser_manager import BrowserManager
 from .models import AsyncCrawlResponse
 from typing import Union, List, Dict, Any, Optional
-from playwright.async_api import Page
+from playwright.async_api import Page, Error, TimeoutError as PlaywrightTimeoutError
 import time
 import base64
-from io import BytesIO
+from .async_logger import AsyncLogger
 
 class AsyncPlaywrightStrategy:
   def __init__(self, browser_config: BrowserConfig = None):
     self.browser_config = browser_config or BrowserConfig()
     self.browser_manager = BrowserManager(browser_config=self.browser_config)
+    self.logger = AsyncLogger()
 
   async def __aenter__(self):
     await self.browser_manager.start()
@@ -47,6 +48,72 @@ class AsyncPlaywrightStrategy:
     except Exception as e:
       print(f"ERROR: Failed to take screenshot: {e}")
       return ""
+    
+  async def process_iframes(self, page: Page) -> Page:
+    self.logger.info(message="Starting iframe processing.", tag="IFRAME")
+    iframes = await page.query_selector_all("iframe")
+
+    if not iframes:
+        self.logger.info(message="No iframes found on the page.", tag="IFRAME")
+        return page
+
+    for i, iframe in enumerate(iframes):
+        try:
+            await iframe.evaluate(f'(element) => element.id = "AICrawler-iframe-{i}"')
+
+            frame = await iframe.content_frame()
+
+            if frame:
+                self.logger.debug(message="Accessing frame {index}, URL: {url}", tag="IFRAME", params={"index": i, "url": frame.url})
+                await frame.wait_for_load_state("load", timeout=3000)
+
+                iframe_content = await frame.evaluate("() => document.body.innerHTML")
+                self.logger.debug(message="Extracted {length} bytes from iframe {index}", tag="IFRAME", params={"length": len(iframe_content), "index": i})
+
+                _iframe_content_escaped = iframe_content.replace("`", "\\`")
+                await page.evaluate(
+                    f"""
+                    () => {{
+                        const iframe = document.getElementById('AICrawler-iframe-{i}');
+                        if (iframe) {{
+                            const div = document.createElement('div');
+                            div.innerHTML = `{_iframe_content_escaped}`;
+                            div.className = 'AICrawler-extracted-iframe-content';
+                            iframe.replaceWith(div);
+                            console.log('Replaced iframe {i} with extracted content div.');
+                        }}
+                    }}
+                    """
+                )
+                self.logger.info(message="Successfully processed and replaced iframe {index}.", tag="IFRAME", params={"index": i})
+            else:
+                self.logger.warning(
+                    message="Could not access content frame for iframe {index}. Skipping.",
+                    tag="IFRAME",
+                    params={"index": i},
+                )
+        except PlaywrightTimeoutError as e:
+            self.logger.warning(
+                message="Timeout waiting for iframe {index} to load: {error}",
+                tag="IFRAME",
+                params={"index": i, "error": str(e)},
+            )
+        except Error as e:
+            # Catch Playwright-specific errors (e.g., 'Execution context was destroyed')
+            self.logger.error(
+                message="Playwright error processing iframe {index}: {error}",
+                tag="IFRAME",
+                params={"index": i, "error": str(e)},
+            )
+        except Exception as e:
+            # Catch any other unexpected errors
+            self.logger.error(
+                message="General error processing iframe {index}: {error}",
+                tag="IFRAME",
+                params={"index": i, "error": str(e)},
+            )
+    self.logger.info(message="Finished iframe processing.", tag="IFRAME")
+    return page
 
   async def crawl(self, url: str, config: Optional[CrawlerRunConfig] = None) -> AsyncCrawlResponse:
     config = config or CrawlerRunConfig()
@@ -84,6 +151,10 @@ class AsyncPlaywrightStrategy:
           if not js_execution_result.get("success"):
             print(f"WARNING: JavaScript execution had issues: {js_execution_result.get('results')}")
 
+        if config.process_iframes:
+          self.logger.info(message="Initiating iframe processing.", tag="IFRAME")
+          page = await self.process_iframes(page)
+
         if config.screenshot:
           screenshot_data = await self.take_screenshot_naive(page)
           if screenshot_data:
@@ -101,6 +172,10 @@ class AsyncPlaywrightStrategy:
           network_requests=captured_requests if config.capture_network_requests else None,
           screenshot=screenshot_data
         )
+    
+    except Exception as e:
+      self.logger.error(message="Crawl failed for {url}: {error}", tag="CRAWL_ERROR", params={"url": url, "error": str(e)})
+      raise
     
     finally:
       if config.capture_network_requests:

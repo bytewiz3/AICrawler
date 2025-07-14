@@ -6,10 +6,11 @@ class BrowserConfig:
     self.timeout = timeout
 
 class CrawlerRunConfig:
-  def __init__(self, wait_until: str = "load", page_timeout: int = 6000, js_code: Optional[Union[str, List[str]]] = None, capture_network_requests: bool = False, screenshot: bool = False):
+  def __init__(self, wait_until: str = "load", page_timeout: int = 6000, js_code: Optional[Union[str, List[str]]] = None, capture_network_requests: bool = False, screenshot: bool = False, process_iframes: bool = False):
     self.wait_until = wait_until
     self.page_timeout = page_timeout
     self.js_code = js_code
     self.capture_network_requests = capture_network_requests
     self.screenshot = screenshot
+    self.process_iframes = process_iframes
     
