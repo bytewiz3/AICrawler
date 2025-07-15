@@ -87,23 +87,33 @@ async def main():
     # print(f"HTML (first 200 chars):\n{response_with_screenshot.html[:200]}...")
 
     # Example 6: Crawl iframes
-    iframe_test_url = "https://the-internet.herokuapp.com/iframe"
-    config_with_iframe = CrawlerRunConfig(
-      process_iframes=True
+    # iframe_test_url = "https://the-internet.herokuapp.com/iframe"
+    # config_with_iframe = CrawlerRunConfig(
+    #   process_iframes=True
+    # )
+    # response_iframe = await crawler.crawl(iframe_test_url, config=config_with_iframe)
+
+    # print(f"\nCrawl Result for {iframe_test_url}:")
+    # print(f"  Status Code: {response_iframe.status_code}")
+
+    # print("\n--- HTML content after iframe processing (looking for 'AICrawler-extracted-iframe-content') ---")
+    # soup = BeautifulSoup(response_iframe.html, "html.parser")
+    # found = soup.find("div", class_="AICrawler-extracted-iframe-content")
+    # if found:
+    #   print("SUCCESS: Found content or placeholder from processed iframe!")
+    # else:
+    #   print("NOTE: Could not verify iframe content directly in HTML. This might be due to iframe content, or the iframe was not found/processed.")
+    # print(f"HTML (first 1000 chars):\n{response_iframe.html[:1000]}...")
+
+    # Example 7: smart wait
+    print("\n--- Crawling with Smart Wait (CSS Selector) ---")
+    config_wait_css = CrawlerRunConfig(
+      wait_for="css:tr.athing", # Wait for the element containing posts to appear
+      page_timeout=5000
     )
-    response_iframe = await crawler.crawl(iframe_test_url, config=config_with_iframe)
+    response_wait_css = await crawler.crawl("https://news.ycombinator.com/", config=config_wait_css)
 
-    print(f"\nCrawl Result for {iframe_test_url}:")
-    print(f"  Status Code: {response_iframe.status_code}")
-
-    print("\n--- HTML content after iframe processing (looking for 'AICrawler-extracted-iframe-content') ---")
-    soup = BeautifulSoup(response_iframe.html, "html.parser")
-    found = soup.find("div", class_="AICrawler-extracted-iframe-content")
-    if found:
-      print("SUCCESS: Found content or placeholder from processed iframe!")
-    else:
-      print("NOTE: Could not verify iframe content directly in HTML. This might be due to iframe content, or the iframe was not found/processed.")
-    print(f"HTML (first 1000 chars):\n{response_iframe.html[:1000]}...")
+    print(f"Status Code: {response_wait_css.status_code}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+  asyncio.run(main())

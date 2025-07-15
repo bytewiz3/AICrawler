@@ -115,6 +115,81 @@ class AsyncPlaywrightStrategy:
     self.logger.info(message="Finished iframe processing.", tag="IFRAME")
     return page
 
+  async def csp_compliant_wait(self, page: Page, user_wait_function: str, timeout: float = 3000) -> bool:
+    wrapper_js = f"""
+    async () => {{
+        const userFunction = {user_wait_function};
+        const startTime = Date.now();
+        try {{
+            while (true) {{
+                if (await userFunction()) {{
+                    return true;
+                }}
+                if (Date.now() - startTime > {timeout}) {{
+                    return false;
+                }}
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }}
+        }} catch (error) {{
+            throw new Error(`Error evaluating condition: ${{error.message}}`);
+        }}
+    }}
+    """
+    try:
+      result = await page.evaluate(wrapper_js)
+      return result
+    except Exception as e:
+      self.logger.error(
+          message="Failed to evaluate CSP-compliant wait condition: {error}",
+          tag="SMART_WAIT",
+          params={"error": str(e)}
+      )
+      return False
+
+  async def smart_wait(self, page: Page, wait_for: str, timeout: float = 30000):
+    wait_for = wait_for.strip()
+
+    if wait_for.startswith("js:"):
+      js_code = wait_for[3:].strip()
+      result = await self.csp_compliant_wait(page, js_code, timeout)
+      if not result:
+          raise PlaywrightTimeoutError(f"Timeout after {timeout}ms waiting for JS condition '{js_code}'")
+      self.logger.info(message="JS wait condition met.", tag="SMART_WAIT")
+    elif wait_for.startswith("css:"):
+      css_selector = wait_for[4:].strip()
+      try:
+          await page.wait_for_selector(css_selector, timeout=timeout)
+          self.logger.info(message="CSS selector found.", tag="SMART_WAIT")
+      except PlaywrightTimeoutError:
+          raise PlaywrightTimeoutError(f"Timeout after {timeout}ms waiting for selector '{css_selector}'")
+      except Error as e:
+          raise ValueError(f"Invalid CSS selector '{css_selector}': {e}")
+    else:
+      if wait_for.startswith("()") or wait_for.startswith("function"):
+        result = await self.csp_compliant_wait(page, wait_for, timeout)
+        if not result:
+          raise PlaywrightTimeoutError(f"Timeout after {timeout}ms waiting for JS function '{wait_for}'")
+        self.logger.info(message="Auto-detected JS wait condition met.", tag="SMART_WAIT")
+      else:
+        try:
+          await page.wait_for_selector(wait_for, timeout=timeout)
+          self.logger.info(message="Auto-detected CSS selector found.", tag="SMART_WAIT")
+        except PlaywrightTimeoutError:
+          raise PlaywrightTimeoutError(f"Timeout after {timeout}ms waiting for selector '{wait_for}'")
+        except Error as e:
+          self.logger.warning(message="CSS selector failed, attempting as JS function.", tag="SMART_WAIT")
+          try:
+            result = await self.csp_compliant_wait(page, f"() => {{{wait_for}}}", timeout)
+            if not result:
+              raise PlaywrightTimeoutError(f"Timeout after {timeout}ms waiting for JS function fallback '{wait_for}'")
+            self.logger.info(message="JS function fallback wait condition met.", tag="SMART_WAIT")
+          except Exception:
+            raise ValueError(
+              f"Invalid wait_for parameter: '{wait_for}'. "
+              "It should be either a valid CSS selector, a JavaScript function, "
+              "or explicitly prefixed with 'js:' or 'css:'."
+            )
+
   async def crawl(self, url: str, config: Optional[CrawlerRunConfig] = None) -> AsyncCrawlResponse:
     config = config or CrawlerRunConfig()
     page, context = await self.browser_manager.get_page()
@@ -150,6 +225,14 @@ class AsyncPlaywrightStrategy:
           js_execution_result = await self.robust_execute_user_script(page, config.js_code)
           if not js_execution_result.get("success"):
             print(f"WARNING: JavaScript execution had issues: {js_execution_result.get('results')}")
+
+        if config.wait_for:
+          self.logger.info(message="Applying smart wait condition: {condition}", tag="SMART_WAIT", params={"condition": config.wait_for})
+          try:
+            await self.smart_wait(page, config.wait_for, timeout=config.page_timeout)
+          except (PlaywrightTimeoutError, ValueError) as e:
+            self.logger.error(message="Smart wait condition failed: {error}", tag="SMART_WAIT", params={"error": str(e)})
+            raise
 
         if config.process_iframes:
           self.logger.info(message="Initiating iframe processing.", tag="IFRAME")
