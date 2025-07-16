@@ -106,14 +106,36 @@ async def main():
     # print(f"HTML (first 1000 chars):\n{response_iframe.html[:1000]}...")
 
     # Example 7: smart wait
-    print("\n--- Crawling with Smart Wait (CSS Selector) ---")
-    config_wait_css = CrawlerRunConfig(
-      wait_for="css:tr.athing", # Wait for the element containing posts to appear
-      page_timeout=5000
-    )
-    response_wait_css = await crawler.crawl("https://news.ycombinator.com/", config=config_wait_css)
+    # print("\n--- Crawling with Smart Wait (CSS Selector) ---")
+    # config_wait_css = CrawlerRunConfig(
+    #   wait_for="css:tr.athing", # Wait for the element containing posts to appear
+    #   page_timeout=5000
+    # )
+    # response_wait_css = await crawler.crawl("https://news.ycombinator.com/", config=config_wait_css)
 
-    print(f"Status Code: {response_wait_css.status_code}")
+    # print(f"Status Code: {response_wait_css.status_code}")
+
+    # Example 8: crawl with overlay removal
+    print("\n--- Crawling a page with potential overlays ---")
+    test_url = "https://www.asos.com/"
+
+    config_with_original_overlays = CrawlerRunConfig(
+      wait_for="css:#onetrust-policy-text",
+      page_timeout=6000,
+      remove_overlay_elements=True
+    )
+    print(f"Attempting to crawl: {test_url}")
+    response_original_overlays = await crawler.crawl(test_url, config=config_with_original_overlays)
+
+    print(f"\nCrawl Result for {test_url}:")
+    print(f"  Status Code: {response_original_overlays.status_code}")
+
+    soup = BeautifulSoup(response_original_overlays.html, "html.parser")
+    element = soup.select_one("#onetrust-policy-text")
+    if element:
+      print("Element found:", element.text.strip())
+    else:
+      print("Element not found")
 
 if __name__ == "__main__":
   asyncio.run(main())

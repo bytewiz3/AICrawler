@@ -6,6 +6,7 @@ from playwright.async_api import Page, Error, TimeoutError as PlaywrightTimeoutE
 import time
 import base64
 from .async_logger import AsyncLogger
+from .js_snippet import load_js_script
 
 class AsyncPlaywrightStrategy:
   def __init__(self, browser_config: BrowserConfig = None):
@@ -189,6 +190,32 @@ class AsyncPlaywrightStrategy:
               "It should be either a valid CSS selector, a JavaScript function, "
               "or explicitly prefixed with 'js:' or 'css:'."
             )
+  
+  async def remove_overlay_elements(self, page: Page) -> Dict[str, Any]:
+    self.logger.info(message="Attempting to remove overlay elements.", tag="OVERLAY_REMOVAL")
+    remove_overlays_js = load_js_script("remove_overlay_elements")
+    try:
+      removal_result = await page.evaluate(remove_overlays_js)
+      await page.wait_for_timeout(500) # Give a brief moment for DOM changes to apply
+      self.logger.info(
+        message="Overlay removal report: Clicked {clicked} buttons, Removed {removed} elements, Fixed {fixed} fixed elements, Removed {empty_blocks} empty blocks, Scroll enabled: {scroll_enabled}",
+        tag="OVERLAY_REMOVAL",
+          params={
+            "clicked": removal_result.get("clickedCount", 0),
+            "removed": removal_result.get("removedCount", 0),
+            "fixed": removal_result.get("fixedElementsRemovedCount", 0),
+            "empty_blocks": removal_result.get("emptyBlockElementsRemovedCount", 0),
+            "scroll_enabled": removal_result.get("scrollReEnabled", False)
+          }
+        )
+      return {"success": True, "details": removal_result}
+    except Exception as e:
+      self.logger.error(
+        message="Failed to remove overlay elements: {error}",
+        tag="OVERLAY_REMOVAL",
+        params={"error": str(e)},
+      )
+      return {"success": False, "error": str(e)}
 
   async def crawl(self, url: str, config: Optional[CrawlerRunConfig] = None) -> AsyncCrawlResponse:
     config = config or CrawlerRunConfig()
@@ -226,6 +253,9 @@ class AsyncPlaywrightStrategy:
           if not js_execution_result.get("success"):
             print(f"WARNING: JavaScript execution had issues: {js_execution_result.get('results')}")
 
+        if config.remove_overlay_elements:
+          await self.remove_overlay_elements(page)
+          
         if config.wait_for:
           self.logger.info(message="Applying smart wait condition: {condition}", tag="SMART_WAIT", params={"condition": config.wait_for})
           try:
