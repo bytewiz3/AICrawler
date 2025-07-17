@@ -7,12 +7,14 @@ import time
 import base64
 from .async_logger import AsyncLogger
 from .js_snippet import load_js_script
+from .user_agent_generator import ValidUAGenerator
 
 class AsyncPlaywrightStrategy:
   def __init__(self, browser_config: BrowserConfig = None):
     self.browser_config = browser_config or BrowserConfig()
     self.browser_manager = BrowserManager(browser_config=self.browser_config)
     self.logger = AsyncLogger()
+    self.ua_generator = ValidUAGenerator()
 
   async def __aenter__(self):
     await self.browser_manager.start()
@@ -219,7 +221,24 @@ class AsyncPlaywrightStrategy:
 
   async def crawl(self, url: str, config: Optional[CrawlerRunConfig] = None) -> AsyncCrawlResponse:
     config = config or CrawlerRunConfig()
-    page, context = await self.browser_manager.get_page()
+
+    user_agent_to_set: Optional[str] = None
+    if config.user_agent:
+      user_agent_to_set = config.user_agent
+      self.logger.info(message="Using explicit User-Agent: {ua}", tag="USER_AGENT", params={"ua": user_agent_to_set})
+    elif config.user_agent_mode == "random": 
+      user_agent_to_set = self.ua_generator.generate( 
+        **(config.user_agent_generator_config or {})
+      )
+      self.logger.info(message="Using random User-Agent: {ua}", tag="USER_AGENT", params={"ua": user_agent_to_set})
+  
+    context_options = {}
+    if user_agent_to_set:
+      context_options["user_agent"] = user_agent_to_set
+        
+    context = await self.browser_manager._browser_instance.new_context(**context_options)
+    page = await context.new_page()
+    
     js_execution_result = None
     captured_requests = []
     screenshot_data = None
