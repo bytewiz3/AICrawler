@@ -9,6 +9,7 @@ from .async_logger import AsyncLogger
 from .js_snippet import load_js_script
 from .user_agent_generator import ValidUAGenerator
 import re
+import random
 
 class AsyncPlaywrightStrategy:
   def __init__(self, browser_config: BrowserConfig = None):
@@ -254,6 +255,107 @@ class AsyncPlaywrightStrategy:
       pass
     
     return headers
+  
+  async def get_page_dimensions(self, page: Page):
+    return await page.evaluate(
+      """
+      () => {
+        const {scrollWidth, scrollHeight} = document.documentElement;
+        return {width: scrollWidth, height: scrollHeight};
+      }
+      """
+    )
+
+  async def csp_scroll_to(self, page: Page, x: int, y: int) -> Dict[str, Any]:
+    try:
+      result = await page.evaluate(
+        f"""() => {{
+          try {{
+            const startX = window.scrollX;
+            const startY = window.scrollY;
+            window.scrollTo({x}, {y});
+            
+            const endX = window.scrollX;
+            const endY = window.scrollY;
+            
+            return {{
+              success: true,
+              startPosition: {{ x: startX, y: startY }},
+              endPosition: {{ x: endX, y: endY }},
+              targetPosition: {{ x: {x}, y: {y} }},
+              delta: {{
+                x: Math.abs(endX - {x}),
+                y: Math.abs(endY - {y})
+              }}
+            }};
+          }} catch (e) {{
+            return {{
+              success: false,
+              error: e.toString()
+            }};
+          }}
+        }}"""
+      )
+      if not result["success"]:
+        self.logger.warning(
+          message="Scroll operation failed: {error}",
+          tag="SCROLL",
+          params={"error": result.get("error")},
+        )
+      return result
+    except Exception as e:
+      self.logger.error(
+        message="Failed to execute scroll: {error}",
+        tag="SCROLL",
+        params={"error": str(e)},
+      )
+      return {"success": False, "error": str(e)}
+
+  async def safe_scroll(self, page: Page, x: int, y: int, delay: float = 0.1):
+    result = await self.csp_scroll_to(page, x, y)
+    if result["success"]:
+      await page.wait_for_timeout(delay * 1000) # delay in milliseconds
+    return result
+
+  async def _handle_full_page_scan(self, page: Page, scroll_delay: float = 0.1):
+    self.logger.info(message="Starting full page scan (scrolling).", tag="PAGE_SCAN")
+    try:
+      if page.viewport_size is None:
+        await page.set_viewport_size(
+          {"width": self.browser_config.viewport_width, "height": self.browser_config.viewport_height}
+        )
+      
+      viewport_height = page.viewport_size.get(
+        "height", self.browser_config.viewport_height
+      )
+      current_position = 0
+
+      dimensions = await self.get_page_dimensions(page)
+      total_height = dimensions["height"]
+      
+      self.logger.debug(message="Initial page height: {total_height}, Viewport height: {viewport_height}", tag="PAGE_SCAN", params={"total_height": total_height, "viewport_height": viewport_height})
+
+      while current_position < total_height:
+        current_position = min(current_position + viewport_height, total_height)
+        await self.safe_scroll(page, 0, current_position, delay=scroll_delay)
+        
+        new_height = (await self.get_page_dimensions(page))["height"]
+        if new_height > total_height:
+          self.logger.debug(message="Page height increased to {new_height}.", tag="PAGE_SCAN", params={"new_height": new_height})
+          total_height = new_height
+        else:
+          if current_position >= total_height:
+            break
+
+      await self.safe_scroll(page, 0, 0, delay=scroll_delay)
+      self.logger.info(message="Full page scan completed.", tag="PAGE_SCAN")
+
+    except Exception as e:
+      self.logger.warning(
+        message="Failed to perform full page scan: {error}",
+        tag="PAGE_SCAN",
+        params={"error": str(e)},
+      )
 
   async def crawl(self, url: str, config: Optional[CrawlerRunConfig] = None) -> AsyncCrawlResponse:
     config = config or CrawlerRunConfig()
@@ -262,7 +364,7 @@ class AsyncPlaywrightStrategy:
     if config.user_agent:
       user_agent_to_set = config.user_agent
       self.logger.info(message="Using explicit User-Agent: {ua}", tag="USER_AGENT", params={"ua": user_agent_to_set})
-    elif config.user_agent_mode == "random": 
+    elif config.user_agent_mode == "random" or config.magic:
       user_agent_to_set = self.ua_generator.generate( 
         **(config.user_agent_generator_config or {})
       )
@@ -280,7 +382,6 @@ class AsyncPlaywrightStrategy:
           **client_hints
         }
         self.logger.info(message="Added Client Hints: {hints}", tag="CLIENT_HINTS", params={"hints": client_hints})
-
         
     context = await self.browser_manager._browser_instance.new_context(**context_options)
     page = await context.new_page()
@@ -288,6 +389,18 @@ class AsyncPlaywrightStrategy:
     js_execution_result = None
     captured_requests = []
     screenshot_data = None
+
+    if config.override_navigator or config.magic:
+      self.logger.info(message="Adding navigator override init script.", tag="SPOOFING")
+      await context.add_init_script(load_js_script("navigator_overrider"))
+
+    if config.simulate_user or config.magic:
+      self.logger.info(message="Simulating basic user interaction (mouse/keyboard).", tag="SPOOFING")
+      await page.mouse.move(random.randint(50, 200), random.randint(50, 200))
+      await page.mouse.down()
+      await page.mouse.up()
+      await page.keyboard.press("ArrowDown")
+      await page.wait_for_timeout(random.uniform(500, 1500))
 
     if config.capture_network_requests:
       def handle_request_capture(request):
