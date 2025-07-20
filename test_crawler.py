@@ -120,9 +120,9 @@ async def main():
     test_url = "https://www.asos.com/"
 
     config_with_original_overlays = CrawlerRunConfig(
-      # wait_for="css:#onetrust-policy-text",
-      # page_timeout=6000,
-      # remove_overlay_elements=True
+      wait_for="css:#onetrust-policy-text",
+      page_timeout=6000,
+      remove_overlay_elements=True,
       user_agent_mode="random",
       user_agent_generator_config={"browsers": ["Chrome", "Firefox"], "platforms": ["desktop"]},
     )
@@ -131,13 +131,13 @@ async def main():
 
     print(f"\nCrawl Result for {test_url}:")
     print(f"  Status Code: {response_original_overlays.status_code}")
-    print(f"HTML (first 1000 chars):\n{response_original_overlays.html[:1000]}...")
-    # soup = BeautifulSoup(response_original_overlays.html, "html.parser")
-    # element = soup.select_one("#onetrust-policy-text")
-    # if element:
-    #   print("Element found:", element.text.strip())
-    # else:
-    #   print("Element not found")
+    # print(f"HTML (first 1000 chars):\n{response_original_overlays.html[:1000]}...")
+    soup = BeautifulSoup(response_original_overlays.html, "html.parser")
+    element = soup.select_one("#onetrust-policy-text")
+    if element:
+      print("Element found:", element.text.strip())
+    else:
+      print("Element not found")
 
 if __name__ == "__main__":
   asyncio.run(main())

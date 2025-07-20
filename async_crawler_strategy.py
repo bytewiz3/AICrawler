@@ -8,6 +8,7 @@ import base64
 from .async_logger import AsyncLogger
 from .js_snippet import load_js_script
 from .user_agent_generator import ValidUAGenerator
+import re
 
 class AsyncPlaywrightStrategy:
   def __init__(self, browser_config: BrowserConfig = None):
@@ -219,6 +220,41 @@ class AsyncPlaywrightStrategy:
       )
       return {"success": False, "error": str(e)}
 
+  def _generate_client_hints_from_ua(self, user_agent: str) -> Dict[str, str]:
+    headers = {}
+    sec_ch_ua_value = self.ua_generator.generate_client_hints(user_agent)
+    if sec_ch_ua_value:
+      headers['Sec-CH-UA'] = sec_ch_ua_value
+
+    if "Windows NT" in user_agent:
+      headers['Sec-CH-UA-Platform'] = '"Windows"'
+      headers['Sec-CH-UA-Platform-Version'] = '"10.0"'
+    elif "Macintosh" in user_agent:
+      headers['Sec-CH-UA-Platform'] = '"macOS"'
+      headers['Sec-CH-UA-Platform-Version'] = '"13.0.0"'
+    elif "Linux" in user_agent and "Android" not in user_agent:
+      headers['Sec-CH-UA-Platform'] = '"Linux"'
+      headers['Sec-CH-UA-Platform-Version'] = '""'
+    elif "Android" in user_agent:
+      headers['Sec-CH-UA-Platform'] = '"Android"'
+      match = re.search(r"Android (\d+)", user_agent)
+      if match:
+        headers['Sec-CH-UA-Platform-Version'] = f'"{match.group(1)}.0.0"'
+      else:
+        headers['Sec-CH-UA-Platform-Version'] = '"13.0.0"'
+        
+    headers['Sec-CH-UA-Mobile'] = '?0' if "Mobi" not in user_agent and "Android" not in user_agent and "iPhone" not in user_agent else '?1'
+
+    if "Chrome/" in user_agent:
+      chrome_version_match = re.search(r"Chrome/(\d+\.\d+\.\d+\.\d+)", user_agent)
+      if chrome_version_match:
+        chrome_version = chrome_version_match.group(1)
+        headers['Sec-CH-UA-Full-Version-List'] = f'"Chromium";v="{chrome_version}", "Not A(Brand";v="99.0.0.0", "Google Chrome";v="{chrome_version}"'
+    elif "Firefox/" in user_agent:
+      pass
+    
+    return headers
+
   async def crawl(self, url: str, config: Optional[CrawlerRunConfig] = None) -> AsyncCrawlResponse:
     config = config or CrawlerRunConfig()
 
@@ -235,6 +271,16 @@ class AsyncPlaywrightStrategy:
     context_options = {}
     if user_agent_to_set:
       context_options["user_agent"] = user_agent_to_set
+
+    if user_agent_to_set:
+      client_hints = self._generate_client_hints_from_ua(user_agent_to_set)
+      if client_hints:
+        context_options['extra_http_headers'] = {
+          **context_options.get('extra_http_headers', {}),
+          **client_hints
+        }
+        self.logger.info(message="Added Client Hints: {hints}", tag="CLIENT_HINTS", params={"hints": client_hints})
+
         
     context = await self.browser_manager._browser_instance.new_context(**context_options)
     page = await context.new_page()

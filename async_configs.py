@@ -1,10 +1,12 @@
 from typing import Optional, Union, List, Literal, Dict, Any
 
 class BrowserConfig:
-  def __init__(self, headless: bool = True, timeout: int = 6000, user_agent: Optional[str] = None):
+  def __init__(self, headless: bool = True, timeout: int = 6000, user_agent: Optional[str] = None, viewport_width: int = 1920, viewport_height: int = 1080):
     self.headless = headless
     self.timeout = timeout
     self.user_agent = user_agent
+    self.viewport_width = viewport_width
+    self.viewport_height = viewport_height
 
 class CrawlerRunConfig:
   def __init__(
@@ -12,7 +14,8 @@ class CrawlerRunConfig:
     capture_network_requests: bool = False, screenshot: bool = False, process_iframes: bool = False, 
     wait_for: Optional[str] = None, remove_overlay_elements: bool = False,
      user_agent_mode: Literal["default", "random"] = "default", user_agent_generator_config: Optional[Dict[str, Any]] = None, 
-     user_agent: Optional[str] = None
+     user_agent: Optional[str] = None, override_navigator: bool = False, simulate_user: bool = False, magic: bool = False, 
+     scan_full_page: bool = False, scroll_delay: float = 0.1
   ):
     self.wait_until = wait_until
     self.page_timeout = page_timeout
@@ -25,6 +28,10 @@ class CrawlerRunConfig:
     self.user_agent_mode = user_agent_mode
     self.user_agent_generator_config = user_agent_generator_config
     self.user_agent = user_agent
-
+    self.override_navigator = override_navigator
+    self.simulate_user = simulate_user
+    self.magic = magic
+    self.scan_full_page = scan_full_page
+    self.scroll_delay = scroll_delay
 
     
