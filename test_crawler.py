@@ -70,21 +70,22 @@ async def main():
     # print(f"HTML (first 200 chars):\n{response_with_network.html[:200]}...")
 
     # Example 5: Crawl with screenshot
-    # print("\n--- Crawling with Screenshot ---")
-    # config_with_screenshot = CrawlerRunConfig(
-    #     screenshot=True
-    # )
-    # response_with_screenshot = await crawler.crawl(target_url, config=config_with_screenshot)
+    print("\n--- Crawling with Screenshot ---")
+    config_with_screenshot = CrawlerRunConfig(
+        screenshot=True
+    )
+    target_url = "https://www.theverge.com/tech"
+    response_with_screenshot = await crawler.crawl(target_url, config=config_with_screenshot)
 
-    # print(f"Status Code: {response_with_screenshot.status_code}")
-    # if response_with_screenshot.screenshot:
-    #     print(f"Screenshot data collected (base64 encoded, length: {len(response_with_screenshot.screenshot)}).")
-    #     with open("example_screenshot.png", "wb") as f:
-    #         f.write(base64.b64decode(response_with_screenshot.screenshot))
-    #     print("Screenshot saved to example_screenshot.png.")
-    # else:
-    #     print("No screenshot data captured.")
-    # print(f"HTML (first 200 chars):\n{response_with_screenshot.html[:200]}...")
+    print(f"Status Code: {response_with_screenshot.status_code}")
+    if response_with_screenshot.screenshot:
+        print(f"Screenshot data collected (base64 encoded, length: {len(response_with_screenshot.screenshot)}).")
+        with open("example_screenshot.png", "wb") as f:
+            f.write(base64.b64decode(response_with_screenshot.screenshot))
+        print("Screenshot saved to example_screenshot.png.")
+    else:
+        print("No screenshot data captured.")
+    print(f"HTML (first 200 chars):\n{response_with_screenshot.html[:200]}...")
 
     # Example 6: Crawl iframes
     # iframe_test_url = "https://the-internet.herokuapp.com/iframe"
@@ -116,27 +117,27 @@ async def main():
     # print(f"Status Code: {response_wait_css.status_code}")
 
     # Example 8: crawl with overlay removal
-    print("\n--- Crawling a page with potential overlays ---")
-    test_url = "https://www.asos.com/"
+    # print("\n--- Crawling a page with potential overlays ---")
+    # test_url = "https://www.asos.com/"
 
-    config_with_original_overlays = CrawlerRunConfig(
-      # wait_for="css:#onetrust-policy-text",
-      # page_timeout=6000,
-      # remove_overlay_elements=True,
-      magic=True,
-      scan_full_page=True,
-      scroll_delay=0.5,
-      page_timeout=10000,
-      wait_until="networkidle",
-      user_agent_mode="random",
-      user_agent_generator_config={"browsers": ["Chrome", "Firefox"], "platforms": ["desktop"]},
-    )
-    print(f"Attempting to crawl: {test_url}")
-    response_original_overlays = await crawler.crawl(test_url, config=config_with_original_overlays)
+    # config_with_original_overlays = CrawlerRunConfig(
+    #   # wait_for="css:#onetrust-policy-text",
+    #   # page_timeout=6000,
+    #   # remove_overlay_elements=True,
+    #   magic=True,
+    #   scan_full_page=True,
+    #   scroll_delay=0.5,
+    #   page_timeout=10000,
+    #   wait_until="networkidle",
+    #   user_agent_mode="random",
+    #   user_agent_generator_config={"browsers": ["Chrome", "Firefox"], "platforms": ["desktop"]},
+    # )
+    # print(f"Attempting to crawl: {test_url}")
+    # response_original_overlays = await crawler.crawl(test_url, config=config_with_original_overlays)
 
-    print(f"\nCrawl Result for {test_url}:")
-    print(f"  Status Code: {response_original_overlays.status_code}")
-    print(f"HTML (first 1000 chars):\n{response_original_overlays.html[:1000]}...")
+    # print(f"\nCrawl Result for {test_url}:")
+    # print(f"  Status Code: {response_original_overlays.status_code}")
+    # print(f"HTML (first 1000 chars):\n{response_original_overlays.html[:1000]}...")
     # soup = BeautifulSoup(response_original_overlays.html, "html.parser")
     # element = soup.select_one("#onetrust-policy-text")
     # if element:

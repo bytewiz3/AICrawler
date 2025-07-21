@@ -1,12 +1,13 @@
 from typing import Optional, Union, List, Literal, Dict, Any
 
 class BrowserConfig:
-  def __init__(self, headless: bool = True, timeout: int = 6000, user_agent: Optional[str] = None, viewport_width: int = 1920, viewport_height: int = 1080):
+  def __init__(self, headless: bool = True, timeout: int = 6000, user_agent: Optional[str] = None, viewport_width: int = 1920, viewport_height: int = 1080, screenshot_height_threshold: int = 15000):
     self.headless = headless
     self.timeout = timeout
     self.user_agent = user_agent
     self.viewport_width = viewport_width
     self.viewport_height = viewport_height
+    self.screenshot_height_threshold = screenshot_height_threshold
 
 class CrawlerRunConfig:
   def __init__(

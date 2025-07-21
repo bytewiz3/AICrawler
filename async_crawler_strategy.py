@@ -10,6 +10,8 @@ from .js_snippet import load_js_script
 from .user_agent_generator import ValidUAGenerator
 import re
 import random
+from io import BytesIO
+from PIL import Image, ImageDraw, ImageFont
 
 class AsyncPlaywrightStrategy:
   def __init__(self, browser_config: BrowserConfig = None):
@@ -46,14 +48,113 @@ class AsyncPlaywrightStrategy:
         results.append({"success": False, "script": script, "error": str(e)})
     return {"success": all(r.get("success", False) for r in results), "results": results}
 
+  async def page_need_scroll(self, page: Page) -> bool:
+    try:
+      need_scroll = await page.evaluate(
+        """
+        () => {
+            const scrollHeight = document.documentElement.scrollHeight;
+            const viewportHeight = window.innerHeight;
+            return scrollHeight > viewportHeight;
+        }
+        """
+      )
+      return need_scroll
+    except Exception as e:
+      self.logger.warning(
+        message="Failed to check scroll need for screenshot: {error}. Defaulting to True for safety.",
+        tag="SCREENSHOT",
+        params={"error": str(e)},
+      )
+      return True
+    
   async def take_screenshot_naive(self, page: Page) -> str:
     try:
       screenshot_bytes = await page.screenshot(full_page=False)
       return base64.b64encode(screenshot_bytes).decode("utf-8")
     except Exception as e:
-      print(f"ERROR: Failed to take screenshot: {e}")
-      return ""
+      self.logger.error(message="Failed to take naive screenshot: {error}", tag="SCREENSHOT", params={"error": str(e)})
+      img = Image.new("RGB", (800, 600), color="black")
+      draw = ImageDraw.Draw(img)
+      font = ImageFont.load_default()
+      error_message = f"Screenshot Failed: {str(e)}"
+      draw.text((10, 10), error_message, fill=(255, 255, 255), font=font)
+      buffered = BytesIO()
+      img.save(buffered, format="JPEG")
+      return base64.b64encode(buffered.getvalue()).decode("utf-8")
+  
+  async def take_screenshot_scroller(self, page: Page, screenshot_height_threshold: int) -> str:
+    self.logger.info(message="Taking advanced (scrolling/stitching) screenshot.", tag="SCREENSHOT")
+    try:
+      dimensions = await self.get_page_dimensions(page)
+      page_width = dimensions["width"]
+      page_height = dimensions["height"]
+
+      segments = []
+      viewport_size = page.viewport_size
+      if viewport_size is None:
+        await page.set_viewport_size(
+          {"width": self.browser_config.viewport_width, "height": self.browser_config.viewport_height}
+        )
+        viewport_size = page.viewport_size
+
+      viewport_height = viewport_size["height"]
+
+      num_segments = (page_height // viewport_height) + (1 if page_height % viewport_height > 0 else 0)
+      
+      for i in range(num_segments):
+        y_offset = i * viewport_height
+        await self.safe_scroll(page, 0, y_offset, delay=0.01)
+        seg_shot = await page.screenshot(full_page=False)
+        img = Image.open(BytesIO(seg_shot)).convert("RGB")
+        segments.append(img)
+
+      stitched = Image.new("RGB", (segments[0].width, page_height))
+      offset = 0
+      for i, img in enumerate(segments):
+        paste_height = min(img.height, page_height - offset)
+        stitched.paste(img.crop((0, 0, img.width, paste_height)), (0, offset))
+        offset += paste_height
+
+      buffered = BytesIO()
+      stitched.save(buffered, format="JPEG", quality=85) # Using JPEG for smaller size
+      encoded = base64.b64encode(buffered.getvalue()).decode("utf-8")
+      self.logger.info(message="Advanced screenshot (stitched) captured.", tag="SCREENSHOT")
+      return encoded
+
+    except Exception as e:
+      error_message = f"Failed to take advanced (scrolling/stitching) screenshot: {str(e)}"
+      self.logger.error(message="Advanced screenshot failed: {error}", tag="SCREENSHOT", params={"error": error_message})
+      img = Image.new("RGB", (800, 600), color="black")
+      draw = ImageDraw.Draw(img)
+      font = ImageFont.load_default()
+      draw.text((10, 10), error_message, fill=(255, 255, 255), font=font)
+      buffered = BytesIO()
+      img.save(buffered, format="JPEG")
+      return base64.b64encode(buffered.getvalue()).decode("utf-8")
+  
+  async def take_screenshot(self, page: Page, config: CrawlerRunConfig) -> str:
+    need_scroll = await self.page_need_scroll(page)
+   
+    dimensions = await self.get_page_dimensions(page)
+    page_height = dimensions["height"]
     
+    if page_height > self.browser_config.screenshot_height_threshold:
+      self.logger.info(message="Page height ({ph}px) exceeds screenshot threshold ({thresh}px). Using advanced screenshot.", tag="SCREENSHOT", params={"ph": page_height, "thresh": self.browser_config.screenshot_height_threshold})
+      return await self.take_screenshot_scroller(page, self.browser_config.screenshot_height_threshold)
+    else:
+      self.logger.info(message="Page height ({ph}px) within screenshot threshold. Using naive screenshot (full_page=True if possible).", tag="SCREENSHOT", params={"ph": page_height})
+      try:
+        screenshot_bytes = await page.screenshot(full_page=True)
+        return base64.b64encode(screenshot_bytes).decode("utf-8")
+      except Error as e:
+        self.logger.warning(
+          message="Native full_page screenshot failed ({error}). Falling back to naive viewport capture.",
+          tag="SCREENSHOT",
+          params={"error": str(e)}
+        )
+        return await self.take_screenshot_naive(page)
+
   async def process_iframes(self, page: Page) -> Page:
     self.logger.info(message="Starting iframe processing.", tag="IFRAME")
     iframes = await page.query_selector_all("iframe")
@@ -447,12 +548,13 @@ class AsyncPlaywrightStrategy:
           page = await self.process_iframes(page)
 
         if config.screenshot:
-          screenshot_data = await self.take_screenshot_naive(page)
+          self.logger.info(message="Taking screenshot (intelligent).", tag="SCREENSHOT")
+          screenshot_data = await self.take_screenshot(page, config)
           if screenshot_data:
-            print(f"INFO: Screenshot captured for {url}. Data size: {len(screenshot_data) // 1024} KB")
+            self.logger.info(message="Screenshot captured. Data size: {size} KB", tag="SCREENSHOT", params={"size": len(screenshot_data) // 1024})
           else:
-            print(f"WARNING: No screenshot data captured for {url}.")
-
+            self.logger.warning(message="No screenshot data captured.", tag="SCREENSHOT")
+      
         html = await page.content()
         status_code = response.status if response else 200
 
