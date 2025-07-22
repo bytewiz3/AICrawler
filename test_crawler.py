@@ -1,11 +1,21 @@
 import asyncio
 from .async_crawler_strategy import AsyncPlaywrightStrategy
-from .async_configs import CrawlerRunConfig
+from .async_configs import CrawlerRunConfig, BrowserConfig
 import base64
 from bs4 import BeautifulSoup
+import tempfile
+import os
 
 async def main():
-  crawler = AsyncPlaywrightStrategy()
+  my_download_dir = os.path.join(os.getcwd(), "my_downloads")
+  os.makedirs(my_download_dir, exist_ok=True) # Ensure the directory exists
+
+  crawler = AsyncPlaywrightStrategy(
+    browser_config=BrowserConfig(
+        accept_downloads=True,
+        downloads_path=my_download_dir
+    )
+  )
   target_url = "https://www.scrapingcourse.com/ecommerce/"
 
   async with crawler:
@@ -70,22 +80,22 @@ async def main():
     # print(f"HTML (first 200 chars):\n{response_with_network.html[:200]}...")
 
     # Example 5: Crawl with screenshot
-    print("\n--- Crawling with Screenshot ---")
-    config_with_screenshot = CrawlerRunConfig(
-        screenshot=True
-    )
-    target_url = "https://www.theverge.com/tech"
-    response_with_screenshot = await crawler.crawl(target_url, config=config_with_screenshot)
+    # print("\n--- Crawling with Screenshot ---")
+    # config_with_screenshot = CrawlerRunConfig(
+    #     screenshot=True
+    # )
+    # target_url = "https://www.theverge.com/tech"
+    # response_with_screenshot = await crawler.crawl(target_url, config=config_with_screenshot)
 
-    print(f"Status Code: {response_with_screenshot.status_code}")
-    if response_with_screenshot.screenshot:
-        print(f"Screenshot data collected (base64 encoded, length: {len(response_with_screenshot.screenshot)}).")
-        with open("example_screenshot.png", "wb") as f:
-            f.write(base64.b64decode(response_with_screenshot.screenshot))
-        print("Screenshot saved to example_screenshot.png.")
-    else:
-        print("No screenshot data captured.")
-    print(f"HTML (first 200 chars):\n{response_with_screenshot.html[:200]}...")
+    # print(f"Status Code: {response_with_screenshot.status_code}")
+    # if response_with_screenshot.screenshot:
+    #     print(f"Screenshot data collected (base64 encoded, length: {len(response_with_screenshot.screenshot)}).")
+    #     with open("example_screenshot.png", "wb") as f:
+    #         f.write(base64.b64decode(response_with_screenshot.screenshot))
+    #     print("Screenshot saved to example_screenshot.png.")
+    # else:
+    #     print("No screenshot data captured.")
+    # print(f"HTML (first 200 chars):\n{response_with_screenshot.html[:200]}...")
 
     # Example 6: Crawl iframes
     # iframe_test_url = "https://the-internet.herokuapp.com/iframe"
@@ -144,6 +154,31 @@ async def main():
     #   print("Element found:", element.text.strip())
     # else:
     #   print("Element not found")
+
+    # Example 9: crawl a page with a download link
+    print("\n--- Crawling a Page with a Download Link ---")
+    download_test_url = "https://africau.edu/resource/austrategicplan.pdf"
+    print(f"\n--- Crawling with FIXED download path: {my_download_dir} ---")
+
+    config_download = CrawlerRunConfig(
+        page_timeout=6000
+    )
+    print(f"Attempting to crawl and download from: {download_test_url}")
+    response_download = await crawler.crawl(download_test_url, config=config_download)
+
+    print(f"\nCrawl Result for {download_test_url}:")
+    print(f"  Status Code: {response_download.status_code}")
+    if response_download.downloaded_files:
+        print(f"  Downloaded Files: {response_download.downloaded_files}")
+        for f_path in response_download.downloaded_files:
+            if os.path.exists(f_path):
+                print(f"    - File exists at: {f_path} (size: {os.path.getsize(f_path)} bytes)")
+            else:
+                print(f"    - File NOT found at: {f_path}")
+    else:
+        print("  No files were downloaded.")
+
+    await asyncio.sleep(1)
 
 if __name__ == "__main__":
   asyncio.run(main())

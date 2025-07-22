@@ -2,7 +2,7 @@ from .async_configs import BrowserConfig, CrawlerRunConfig
 from .browser_manager import BrowserManager
 from .models import AsyncCrawlResponse
 from typing import Union, List, Dict, Any, Optional
-from playwright.async_api import Page, Error, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import Page, Error, TimeoutError as PlaywrightTimeoutError, Download
 import time
 import base64
 from .async_logger import AsyncLogger
@@ -12,6 +12,8 @@ import re
 import random
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
+import os
+import asyncio
 
 class AsyncPlaywrightStrategy:
   def __init__(self, browser_config: BrowserConfig = None):
@@ -19,6 +21,7 @@ class AsyncPlaywrightStrategy:
     self.browser_manager = BrowserManager(browser_config=self.browser_config)
     self.logger = AsyncLogger()
     self.ua_generator = ValidUAGenerator()
+    self._downloaded_files: List[str] = []
 
   async def __aenter__(self):
     await self.browser_manager.start()
@@ -458,6 +461,40 @@ class AsyncPlaywrightStrategy:
         params={"error": str(e)},
       )
 
+  async def _handle_download(self, download: Download):
+    try:
+      suggested_filename = download.suggested_filename
+      download_path = os.path.join(self.browser_config.downloads_path, suggested_filename) #
+      
+      os.makedirs(self.browser_config.downloads_path, exist_ok=True)
+
+      self.logger.info(
+        message="Downloading {filename} to {path}",
+        tag="DOWNLOAD",
+        params={"filename": suggested_filename, "path": download_path},
+      )
+
+      start_time = time.perf_counter()
+      await download.save_as(download_path)
+      end_time = time.perf_counter()
+      self._downloaded_files.append(download_path)
+
+      self.logger.info(
+        message="Downloaded {filename} successfully in {duration:.2f}s",
+        tag="DOWNLOAD",
+        params={
+          "filename": suggested_filename,
+          "path": download_path,
+          "duration": end_time - start_time,
+        },
+      )
+    except Exception as e:
+      self.logger.error(
+        message="Failed to handle download: {error}",
+        tag="DOWNLOAD_ERROR",
+        params={"error": str(e)},
+      )
+
   async def crawl(self, url: str, config: Optional[CrawlerRunConfig] = None) -> AsyncCrawlResponse:
     config = config or CrawlerRunConfig()
 
@@ -483,13 +520,26 @@ class AsyncPlaywrightStrategy:
           **client_hints
         }
         self.logger.info(message="Added Client Hints: {hints}", tag="CLIENT_HINTS", params={"hints": client_hints})
-        
+    
+    if self.browser_config.accept_downloads: 
+      context_options['accept_downloads'] = True
+      self.logger.info(message="Accepting downloads to: {path}", tag="DOWNLOAD", params={"path": self.browser_config.downloads_path})
+
     context = await self.browser_manager._browser_instance.new_context(**context_options)
     page = await context.new_page()
-    
-    js_execution_result = None
-    captured_requests = []
-    screenshot_data = None
+
+    self._downloaded_files = []
+
+    download_completed_event = asyncio.Event() 
+    async def _download_completion_wrapper(download_obj: Download):
+      try:
+        await self._handle_download(download_obj)
+      finally:
+        download_completed_event.set()
+
+    if self.browser_config.accept_downloads:
+      page.on("download", _download_completion_wrapper)
+      self.logger.debug(message="Attached download listener to page.", tag="DOWNLOAD")
 
     if config.override_navigator or config.magic:
       self.logger.info(message="Adding navigator override init script.", tag="SPOOFING")
@@ -502,6 +552,10 @@ class AsyncPlaywrightStrategy:
       await page.mouse.up()
       await page.keyboard.press("ArrowDown")
       await page.wait_for_timeout(random.uniform(500, 1500))
+
+    js_execution_result = None
+    captured_requests = []
+    screenshot_data = None
 
     if config.capture_network_requests:
       def handle_request_capture(request):
@@ -523,9 +577,45 @@ class AsyncPlaywrightStrategy:
       
       page.on("request", handle_request_capture)
       page.on("response", handle_response_capture)
+    
+    is_direct_download_url = url.lower().endswith(('.pdf', '.zip', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.gif', '.mp4', '.mp3')) # Simple check
+    # download_completed_event = asyncio.Event()
+    
+    # async def _download_completion_wrapper(download_obj: Download):
+    #   try:
+    #     await self._handle_download(download_obj)
+    #   finally:
+    #     download_completed_event.set()
+
+    # if is_direct_download_url and self.browser_config.accept_downloads:
+    #   page.remove_listener("download", _download_completion_wrapper)
+    #   download_handler_wrapped = lambda d: asyncio.create_task(_download_completion_wrapper(d))
+    #   page.on("download", download_handler_wrapped)
+    #   self.logger.debug(message="Re-attached download listener with completion wrapper.", tag="DOWNLOAD")
 
     try:
+      self.logger.info(message="Navigating to {url}", tag="GOTO", params={"url": url})
+      response = None
+      try:
         response = await page.goto(url=url, wait_until=config.wait_until, timeout=config.page_timeout)
+        self.logger.info(message="Navigation complete, status: {status}", tag="GOTO", params={"status": response.status if response else 'N/A'})
+      except Error as e:
+        if "net::ERR_ABORTED" in str(e) and self.browser_config.accept_downloads and is_direct_download_url:
+          self.logger.warning(
+            message="Navigation aborted for download URL: {url}. Waiting for download completion.",
+            tag="GOTO_ABORTED",
+            params={"url": url}
+          )
+          try:
+            await asyncio.wait_for(download_completed_event.wait(), timeout=config.page_timeout)
+            self.logger.info(message="Download completion confirmed.", tag="DOWNLOAD")
+            response = type('obj', (object,), {'status': 200, 'url': url, 'headers': {}})()
+          except asyncio.TimeoutError:
+            self.logger.error(message="Timeout waiting for download completion for {url}.", tag="DOWNLOAD_TIMEOUT", params={"url": url})
+            raise
+        else:
+          self.logger.error(message="Playwright navigation error: {error}", tag="GOTO_ERROR", params={"error": str(e)})
+          raise
 
         if config.js_code:
           js_execution_result = await self.robust_execute_user_script(page, config.js_code)
@@ -555,15 +645,30 @@ class AsyncPlaywrightStrategy:
           else:
             self.logger.warning(message="No screenshot data captured.", tag="SCREENSHOT")
       
-        html = await page.content()
-        status_code = response.status if response else 200
+        final_html = ""
+        final_status_code = 0
+        if response:
+          try:
+            final_html = await page.content()
+            final_status_code = response.status
+          except Error as content_error:
+            self.logger.warning(message="Could not get HTML content after navigation (likely a direct download): {error}", tag="HTML_RETRIEVAL", params={"error": str(content_error)})
+            final_html = ""
+            final_status_code = response.status if response.status else 200
+        elif is_direct_download_url and download_completed_event.is_set():
+          final_html = ""
+          final_status_code = 200 
+        else:
+          final_html = ""
+          final_status_code = 0
 
         return AsyncCrawlResponse(
-          html=html, 
-          status_code=status_code, 
+          html=final_html,
+          status_code=final_status_code,
           js_execution_result=js_execution_result,
           network_requests=captured_requests if config.capture_network_requests else None,
-          screenshot=screenshot_data
+          screenshot=screenshot_data,
+          downloaded_files=self._downloaded_files if self._downloaded_files else None
         )
     
     except Exception as e:
@@ -571,6 +676,8 @@ class AsyncPlaywrightStrategy:
       raise
     
     finally:
+      if self.browser_config.accept_downloads:
+        page.remove_listener("download", _download_completion_wrapper)
       if config.capture_network_requests:
         page.remove_listener("request", handle_request_capture)
         page.remove_listener("response", handle_response_capture)

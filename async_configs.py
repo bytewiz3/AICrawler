@@ -1,13 +1,18 @@
 from typing import Optional, Union, List, Literal, Dict, Any
+import tempfile
 
 class BrowserConfig:
-  def __init__(self, headless: bool = True, timeout: int = 6000, user_agent: Optional[str] = None, viewport_width: int = 1920, viewport_height: int = 1080, screenshot_height_threshold: int = 15000):
+  def __init__(self, headless: bool = True, timeout: int = 6000, user_agent: Optional[str] = None, 
+    viewport_width: int = 1920, viewport_height: int = 1080, screenshot_height_threshold: int = 15000,
+    accept_downloads: bool = False, downloads_path: Optional[str] = None):
     self.headless = headless
     self.timeout = timeout
     self.user_agent = user_agent
     self.viewport_width = viewport_width
     self.viewport_height = viewport_height
     self.screenshot_height_threshold = screenshot_height_threshold
+    self.accept_downloads = accept_downloads
+    self.downloads_path = downloads_path if downloads_path else tempfile.gettempdir()
 
 class CrawlerRunConfig:
   def __init__(
