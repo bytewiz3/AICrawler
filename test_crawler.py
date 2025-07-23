@@ -156,29 +156,52 @@ async def main():
     #   print("Element not found")
 
     # Example 9: crawl a page with a download link
-    print("\n--- Crawling a Page with a Download Link ---")
-    download_test_url = "https://africau.edu/resource/austrategicplan.pdf"
-    print(f"\n--- Crawling with FIXED download path: {my_download_dir} ---")
+    # print("\n--- Crawling a Page with a Download Link ---")
+    # download_test_url = "https://africau.edu/resource/austrategicplan.pdf"
+    # print(f"\n--- Crawling with FIXED download path: {my_download_dir} ---")
 
-    config_download = CrawlerRunConfig(
-        page_timeout=6000
+    # config_download = CrawlerRunConfig(
+    #     page_timeout=6000,
+    # )
+    # print(f"Attempting to crawl and download from: {download_test_url}")
+    # response_download = await crawler.crawl(download_test_url, config=config_download)
+
+    # print(f"\nCrawl Result for {download_test_url}:")
+    # print(f"  Status Code: {response_download.status_code}")
+    # if response_download.downloaded_files:
+    #     print(f"  Downloaded Files: {response_download.downloaded_files}")
+    #     for f_path in response_download.downloaded_files:
+    #         if os.path.exists(f_path):
+    #             print(f"    - File exists at: {f_path} (size: {os.path.getsize(f_path)} bytes)")
+    #         else:
+    #             print(f"    - File NOT found at: {f_path}")
+    # else:
+    #     print("  No files were downloaded.")
+
+    # await asyncio.sleep(1)
+
+    # Example 10: crawl a page with console message capturing
+    print("\n--- Crawling a Page with Console Message Capturing ---")
+
+    config = CrawlerRunConfig(
+        page_timeout=6000,
+        capture_console_messages=True,
     )
-    print(f"Attempting to crawl and download from: {download_test_url}")
-    response_download = await crawler.crawl(download_test_url, config=config_download)
 
-    print(f"\nCrawl Result for {download_test_url}:")
-    print(f"  Status Code: {response_download.status_code}")
-    if response_download.downloaded_files:
-        print(f"  Downloaded Files: {response_download.downloaded_files}")
-        for f_path in response_download.downloaded_files:
-            if os.path.exists(f_path):
-                print(f"    - File exists at: {f_path} (size: {os.path.getsize(f_path)} bytes)")
-            else:
-                print(f"    - File NOT found at: {f_path}")
+    response = await crawler.crawl(target_url, config=config)
+
+    print(f"Crawled HTML length: {len(response.html)}")
+    print(f"Status Code: {response.status_code}")
+    
+    if response.console_messages:
+        print(f"\n--- Captured {len(response.console_messages)} Console Messages ---")
+        for msg in response.console_messages:
+            print(f"[{msg['timestamp']:.2f}] Type: {msg['type'].upper()}, Text: {msg['text']}")
+            if msg['type'] == 'error' and 'stack' in msg:
+                print(f"  Stack: {msg['stack']}")
+        print("------------------------------------------")
     else:
-        print("  No files were downloaded.")
-
-    await asyncio.sleep(1)
+        print("\nNo console messages captured.")
 
 if __name__ == "__main__":
   asyncio.run(main())

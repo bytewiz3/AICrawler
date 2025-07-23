@@ -556,6 +556,7 @@ class AsyncPlaywrightStrategy:
     js_execution_result = None
     captured_requests = []
     screenshot_data = None
+    captured_console = []
 
     if config.capture_network_requests:
       def handle_request_capture(request):
@@ -577,21 +578,44 @@ class AsyncPlaywrightStrategy:
       
       page.on("request", handle_request_capture)
       page.on("response", handle_response_capture)
-    
-    is_direct_download_url = url.lower().endswith(('.pdf', '.zip', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.gif', '.mp4', '.mp3')) # Simple check
-    # download_completed_event = asyncio.Event()
-    
-    # async def _download_completion_wrapper(download_obj: Download):
-    #   try:
-    #     await self._handle_download(download_obj)
-    #   finally:
-    #     download_completed_event.set()
 
-    # if is_direct_download_url and self.browser_config.accept_downloads:
-    #   page.remove_listener("download", _download_completion_wrapper)
-    #   download_handler_wrapped = lambda d: asyncio.create_task(_download_completion_wrapper(d))
-    #   page.on("download", download_handler_wrapped)
-    #   self.logger.debug(message="Re-attached download listener with completion wrapper.", tag="DOWNLOAD")
+    if config.capture_console_messages:
+      def handle_console_capture(msg):
+        try:
+          entry = {
+            "type": msg.type,
+            "text": msg.text,
+            "timestamp": time.time()
+          }
+          captured_console.append(entry)
+        except Exception as e:
+          self.logger.warning(
+            message="Error capturing console message: {error}",
+            tag="CONSOLE_CAPTURE",
+            params={"error": str(e)}
+          )
+
+      def handle_pageerror_capture(err):
+        try:
+          entry = {
+            "type": "error",
+            "text": err.message,
+            "stack": err.stack,
+            "timestamp": time.time()
+          }
+          captured_console.append(entry)
+        except Exception as e:
+          self.logger.warning(
+            message="Error capturing page error: {error}",
+            tag="CONSOLE_CAPTURE",
+            params={"error": str(e)}
+          )
+
+      page.on("console", handle_console_capture)
+      page.on("pageerror", handle_pageerror_capture)
+      self.logger.debug(message="Attached console message and page error listeners.", tag="CONSOLE_CAPTURE")    
+     
+    is_direct_download_url = url.lower().endswith(('.pdf', '.zip', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.gif', '.mp4', '.mp3'))
 
     try:
       self.logger.info(message="Navigating to {url}", tag="GOTO", params={"url": url})
@@ -599,24 +623,6 @@ class AsyncPlaywrightStrategy:
       try:
         response = await page.goto(url=url, wait_until=config.wait_until, timeout=config.page_timeout)
         self.logger.info(message="Navigation complete, status: {status}", tag="GOTO", params={"status": response.status if response else 'N/A'})
-      except Error as e:
-        if "net::ERR_ABORTED" in str(e) and self.browser_config.accept_downloads and is_direct_download_url:
-          self.logger.warning(
-            message="Navigation aborted for download URL: {url}. Waiting for download completion.",
-            tag="GOTO_ABORTED",
-            params={"url": url}
-          )
-          try:
-            await asyncio.wait_for(download_completed_event.wait(), timeout=config.page_timeout)
-            self.logger.info(message="Download completion confirmed.", tag="DOWNLOAD")
-            response = type('obj', (object,), {'status': 200, 'url': url, 'headers': {}})()
-          except asyncio.TimeoutError:
-            self.logger.error(message="Timeout waiting for download completion for {url}.", tag="DOWNLOAD_TIMEOUT", params={"url": url})
-            raise
-        else:
-          self.logger.error(message="Playwright navigation error: {error}", tag="GOTO_ERROR", params={"error": str(e)})
-          raise
-
         if config.js_code:
           js_execution_result = await self.robust_execute_user_script(page, config.js_code)
           if not js_execution_result.get("success"):
@@ -662,18 +668,55 @@ class AsyncPlaywrightStrategy:
           final_html = ""
           final_status_code = 0
 
-        return AsyncCrawlResponse(
-          html=final_html,
-          status_code=final_status_code,
-          js_execution_result=js_execution_result,
-          network_requests=captured_requests if config.capture_network_requests else None,
-          screenshot=screenshot_data,
-          downloaded_files=self._downloaded_files if self._downloaded_files else None
-        )
+      except Error as e:
+        if "net::ERR_ABORTED" in str(e) and self.browser_config.accept_downloads and is_direct_download_url:
+          self.logger.warning(
+            message="Navigation aborted for download URL: {url}. Waiting for download completion.",
+            tag="GOTO_ABORTED",
+            params={"url": url}
+          )
+          try:
+            await asyncio.wait_for(download_completed_event.wait(), timeout=config.page_timeout)
+            self.logger.info(message="Download completion confirmed.", tag="DOWNLOAD")
+            response = type('obj', (object,), {'status': 200, 'url': url, 'headers': {}})()
+          except asyncio.TimeoutError:
+            self.logger.error(message="Timeout waiting for download completion for {url}.", tag="DOWNLOAD_TIMEOUT", params={"url": url})
+            raise
+          except Exception as inner_e:
+            self.logger.error(message="Error during direct download handling for {url}: {error}", tag="DOWNLOAD_ERROR", params={"url": url, "error": str(inner_e)})
+            return AsyncCrawlResponse(
+              html="", status_code=0, js_execution_result={"success": False, "error": f"Download handling error: {str(inner_e)}"},
+              network_requests=captured_requests if config.capture_network_requests else None,
+              console_messages=captured_console if config.capture_console_messages else None,
+              screenshot=None, downloaded_files=self._downloaded_files if self._downloaded_files else None
+            )
+        else:
+          self.logger.error(message="Playwright navigation error: {error}", tag="GOTO_ERROR", params={"error": str(e)})
+          return AsyncCrawlResponse(
+            html="", status_code=0, js_execution_result={"success": False, "error": f"Navigation failed: {str(e)}"},
+            network_requests=captured_requests if config.capture_network_requests else None,
+            console_messages=captured_console if config.capture_console_messages else None,
+            screenshot=None, downloaded_files=self._downloaded_files if self._downloaded_files else None
+          )
+
+      return AsyncCrawlResponse(
+        html=final_html,
+        status_code=final_status_code,
+        js_execution_result=js_execution_result,
+        network_requests=captured_requests if config.capture_network_requests else None,
+        console_messages=captured_console if config.capture_console_messages else None,
+        screenshot=screenshot_data,
+        downloaded_files=self._downloaded_files if self._downloaded_files else None
+      )
     
     except Exception as e:
       self.logger.error(message="Crawl failed for {url}: {error}", tag="CRAWL_ERROR", params={"url": url, "error": str(e)})
-      raise
+      return AsyncCrawlResponse(
+        html="", status_code=0, js_execution_result={"success": False, "error": f"Overall crawl failed: {str(e)}"},
+        network_requests=captured_requests if config.capture_network_requests else None,
+        console_messages=captured_console if config.capture_console_messages else None,
+        screenshot=None, downloaded_files=self._downloaded_files if self._downloaded_files else None
+      )
     
     finally:
       if self.browser_config.accept_downloads:
@@ -681,6 +724,9 @@ class AsyncPlaywrightStrategy:
       if config.capture_network_requests:
         page.remove_listener("request", handle_request_capture)
         page.remove_listener("response", handle_response_capture)
+      if config.capture_console_messages:
+        page.remove_listener("console", handle_console_capture)
+        page.remove_listener("pageerror", handle_pageerror_capture)
       await page.close()
       await context.close()
 

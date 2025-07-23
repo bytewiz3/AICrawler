@@ -21,7 +21,7 @@ class CrawlerRunConfig:
     wait_for: Optional[str] = None, remove_overlay_elements: bool = False,
      user_agent_mode: Literal["default", "random"] = "default", user_agent_generator_config: Optional[Dict[str, Any]] = None, 
      user_agent: Optional[str] = None, override_navigator: bool = False, simulate_user: bool = False, magic: bool = False, 
-     scan_full_page: bool = False, scroll_delay: float = 0.1
+     scan_full_page: bool = False, scroll_delay: float = 0.1, capture_console_messages: bool = False
   ):
     self.wait_until = wait_until
     self.page_timeout = page_timeout
@@ -39,5 +39,6 @@ class CrawlerRunConfig:
     self.magic = magic
     self.scan_full_page = scan_full_page
     self.scroll_delay = scroll_delay
+    self.capture_console_messages = capture_console_messages
 
     
