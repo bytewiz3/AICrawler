@@ -1,14 +1,23 @@
 from typing import Optional, Dict, Any, List
+from pydantic import BaseModel
 
-class AsyncCrawlResponse:
-  def __init__(self, html: str, status_code: int, js_execution_result: Optional[Dict[str, Any]] = None, 
-    network_requests: Optional[list[Dict[str, Any]]] = None, screenshot: Optional[str] = None,
-    downloaded_files: Optional[List[str]] = None, console_messages: Optional[List[Dict[str, Any]]] = None):
-    self.html = html
-    self.status_code = status_code
-    self.js_execution_result = js_execution_result
-    self.network_requests = network_requests
-    self.screenshot = screenshot
-    self.downloaded_files = downloaded_files
-    self.console_messages = console_messages
+class AsyncCrawlResponse(BaseModel):
+  html: str
+  js_execution_result: Optional[Dict[str, Any]] = None
+  status_code: int
+  screenshot: Optional[str] = None
+  downloaded_files: Optional[List[str]] = None
+  network_requests: Optional[List[Dict[str, Any]]] = None
+  console_messages: Optional[List[Dict[str, Any]]] = None
 
+class CrawlResult(BaseModel):
+  url: str
+  html: str
+  js_execution_result: Optional[Dict[str, Any]] = None
+  status_code: int
+  success: bool
+  error_message: Optional[str] = None
+  screenshot: Optional[str] = None
+  downloaded_files: Optional[List[str]] = None
+  network_requests: Optional[List[Dict[str, Any]]] = None
+  console_messages: Optional[List[Dict[str, Any]]] = None
