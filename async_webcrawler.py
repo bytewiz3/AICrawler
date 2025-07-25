@@ -3,8 +3,8 @@ from .async_configs import CrawlerRunConfig, BrowserConfig
 from typing import Optional
 from .async_logger import AsyncLogger
 import time
-from .models import CrawlResult
-
+from .models import CrawlResult, ScrapingResult
+from .utils import fast_format_html
 
 class AsyncWebCrawler:
   def __init__(
@@ -38,6 +38,46 @@ class AsyncWebCrawler:
 
   async def __aexit__(self, exc_type, exc_val, exc_tb):
     await self.close()
+
+  async def aprocess_html(
+    self,
+    url: str,
+    html: str,
+    config: CrawlerRunConfig,
+    screenshot_data: Optional[str] = None,
+    pdf_data: Optional[bytes] = None,
+    **kwargs,
+  ) -> CrawlResult:
+    _url_display = url if not url.startswith("raw:") else "Raw HTML"
+    start_time = time.perf_counter()
+
+    scraping_strategy = config.scraping_strategy
+    
+    try:
+      scraping_result: ScrapingResult = scraping_strategy.scrap(url, html, **kwargs)
+    except Exception as e:
+      self.logger.error(f"Scraping strategy failed for {url}: {e}", tag="SCRAPE_ERR")
+      return CrawlResult(url=url, html=html, status_code=0, success=False, error_message=f"Scraping failed: {e}")
+
+    cleaned_html = scraping_result.cleaned_html
+    links = scraping_result.links
+    media = scraping_result.media
+    metadata = scraping_result.metadata
+
+    if config.prettify:
+      cleaned_html = fast_format_html(cleaned_html)
+
+    return CrawlResult(
+      url=url,
+      html=html,
+      status_code=200,
+      success=True,
+      error_message="",
+      cleaned_html=cleaned_html,
+      links=links,
+      metadata=metadata,
+      screenshot=screenshot_data,
+    )
 
   async def arun(
     self,
