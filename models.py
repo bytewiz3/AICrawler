@@ -10,6 +10,10 @@ class AsyncCrawlResponse(BaseModel):
   network_requests: Optional[List[Dict[str, Any]]] = None
   console_messages: Optional[List[Dict[str, Any]]] = None
 
+class MarkdownGenerationResult(BaseModel):
+  raw_markdown: str
+  fit_markdown: Optional[str] = None
+
 class CrawlResult(BaseModel):
   url: str
   html: str
@@ -21,6 +25,7 @@ class CrawlResult(BaseModel):
   downloaded_files: Optional[List[str]] = None
   network_requests: Optional[List[Dict[str, Any]]] = None
   console_messages: Optional[List[Dict[str, Any]]] = None
+  markdown: Optional[MarkdownGenerationResult] = None
 
 class Link(BaseModel):
   href: Optional[str] = ""
@@ -37,3 +42,7 @@ class ScrapingResult(BaseModel):
   media: Dict[str, Any]
   links: Dict[str, List[Link]]
   metadata: Dict[str, Any] = {}
+
+
+
+  

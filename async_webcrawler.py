@@ -3,7 +3,7 @@ from .async_configs import CrawlerRunConfig, BrowserConfig
 from typing import Optional
 from .async_logger import AsyncLogger
 import time
-from .models import CrawlResult, ScrapingResult
+from .models import CrawlResult, ScrapingResult, MarkdownGenerationResult
 from .utils import fast_format_html
 
 class AsyncWebCrawler:
@@ -67,6 +67,14 @@ class AsyncWebCrawler:
     if config.prettify:
       cleaned_html = fast_format_html(cleaned_html)
 
+    markdown_generator = config.markdown_generator
+    markdown_input_html = cleaned_html 
+    markdown_result: MarkdownGenerationResult = markdown_generator.generate_markdown(
+      input_html=markdown_input_html,
+      base_url=url
+    )
+    self.logger.info(f"HTML processing and Markdown generation complete for {_url_display}", tag="PROCESS", params={"timing": time.perf_counter() - start_time})
+
     return CrawlResult(
       url=url,
       html=html,
@@ -77,6 +85,7 @@ class AsyncWebCrawler:
       links=links,
       metadata=metadata,
       screenshot=screenshot_data,
+      markdown=markdown_result,
     )
 
   async def arun(

@@ -1,6 +1,7 @@
 from typing import Optional, Union, List, Literal, Dict, Any
 import tempfile
 from .content_scraping_strategy import NoScrapingStrategy, ScrapingStrategy
+from .markdown_generation_strategy import DefaultMarkdownGenerator, MarkdownGenerationStrategy
 
 class BrowserConfig:
   def __init__(self, headless: bool = True, timeout: int = 6000, user_agent: Optional[str] = None, 
@@ -23,7 +24,8 @@ class CrawlerRunConfig:
      user_agent_mode: Literal["default", "random"] = "default", user_agent_generator_config: Optional[Dict[str, Any]] = None, 
      user_agent: Optional[str] = None, override_navigator: bool = False, simulate_user: bool = False, magic: bool = False, 
      scan_full_page: bool = False, scroll_delay: float = 0.1, capture_console_messages: bool = False, 
-     scraping_strategy: Optional[ScrapingStrategy] = None, prettify: bool = False
+     scraping_strategy: Optional[ScrapingStrategy] = None, markdown_generator: Optional[MarkdownGenerationStrategy] = None,
+     prettify: bool = False
   ):
     self.wait_until = wait_until
     self.page_timeout = page_timeout
@@ -43,5 +45,6 @@ class CrawlerRunConfig:
     self.scroll_delay = scroll_delay
     self.capture_console_messages = capture_console_messages
     self.scraping_strategy = scraping_strategy or NoScrapingStrategy() 
+    self.markdown_generator = markdown_generator or DefaultMarkdownGenerator()
     self.prettify = prettify
     
