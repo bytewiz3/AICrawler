@@ -1,5 +1,6 @@
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
+from .ssl_certificate import SSLCertificate
 
 class AsyncCrawlResponse(BaseModel):
   html: str
@@ -9,6 +10,10 @@ class AsyncCrawlResponse(BaseModel):
   downloaded_files: Optional[List[str]] = None
   network_requests: Optional[List[Dict[str, Any]]] = None
   console_messages: Optional[List[Dict[str, Any]]] = None
+  ssl_certificate: Optional[SSLCertificate] = None
+
+  class Config:
+    arbitrary_types_allowed = True
 
 class MarkdownGenerationResult(BaseModel):
   raw_markdown: str
@@ -26,6 +31,10 @@ class CrawlResult(BaseModel):
   network_requests: Optional[List[Dict[str, Any]]] = None
   console_messages: Optional[List[Dict[str, Any]]] = None
   markdown: Optional[MarkdownGenerationResult] = None
+  ssl_certificate: Optional[SSLCertificate] = None
+
+  class Config:
+    arbitrary_types_allowed = True
 
 class Link(BaseModel):
   href: Optional[str] = ""

@@ -14,6 +14,7 @@ from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 import os
 import asyncio
+from .ssl_certificate import SSLCertificate
 
 class AsyncPlaywrightStrategy:
   def __init__(self, browser_config: BrowserConfig = None):
@@ -618,6 +619,14 @@ class AsyncPlaywrightStrategy:
     is_direct_download_url = url.lower().endswith(('.pdf', '.zip', '.doc', '.docx', '.xls', '.xlsx', '.png', '.jpg', '.jpeg', '.gif', '.mp4', '.mp3'))
 
     try:
+      if config.fetch_ssl_certificate and url.startswith("https://"):
+        self.logger.info(message="Attempting to fetch SSL certificate for {url}.", tag="SSL_FETCH", params={"url": url})
+        ssl_cert = SSLCertificate.from_url(url)
+      if ssl_cert:
+        self.logger.info(message="SSL certificate fetched successfully from {url}. Issuer: {issuer}", tag="SSL_FETCH", params={"url": url, "issuer": ssl_cert.issuer})
+      else:
+        self.logger.warning(message="Failed to fetch SSL certificate for {url}.", tag="SSL_FETCH", params={"url": url})
+      
       self.logger.info(message="Navigating to {url}", tag="GOTO", params={"url": url})
       response = None
       try:
@@ -706,7 +715,8 @@ class AsyncPlaywrightStrategy:
         network_requests=captured_requests if config.capture_network_requests else None,
         console_messages=captured_console if config.capture_console_messages else None,
         screenshot=screenshot_data,
-        downloaded_files=self._downloaded_files if self._downloaded_files else None
+        downloaded_files=self._downloaded_files if self._downloaded_files else None,
+        ssl_certificate=ssl_cert
       )
     
     except Exception as e:
@@ -715,7 +725,8 @@ class AsyncPlaywrightStrategy:
         html="", status_code=0, js_execution_result={"success": False, "error": f"Overall crawl failed: {str(e)}"},
         network_requests=captured_requests if config.capture_network_requests else None,
         console_messages=captured_console if config.capture_console_messages else None,
-        screenshot=None, downloaded_files=self._downloaded_files if self._downloaded_files else None
+        screenshot=None, downloaded_files=self._downloaded_files if self._downloaded_files else None,
+        ssl_certificate=ssl_cert
       )
     
     finally:

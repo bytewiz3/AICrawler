@@ -181,11 +181,34 @@ async def main():
     # await asyncio.sleep(1)
 
     # Example 10: crawl a page with console message capturing
-    print("\n--- Crawling a Page with Console Message Capturing ---")
+    # print("\n--- Crawling a Page with Console Message Capturing ---")
+
+    # config = CrawlerRunConfig(
+    #     page_timeout=6000,
+    #     capture_console_messages=True,
+    # )
+
+    # response = await crawler.crawl(target_url, config=config)
+
+    # print(f"Crawled HTML length: {len(response.html)}")
+    # print(f"Status Code: {response.status_code}")
+    
+    # if response.console_messages:
+    #     print(f"\n--- Captured {len(response.console_messages)} Console Messages ---")
+    #     for msg in response.console_messages:
+    #         print(f"[{msg['timestamp']:.2f}] Type: {msg['type'].upper()}, Text: {msg['text']}")
+    #         if msg['type'] == 'error' and 'stack' in msg:
+    #             print(f"  Stack: {msg['stack']}")
+    #     print("------------------------------------------")
+    # else:
+    #     print("\nNo console messages captured.")
+
+    # Example 10: capture TLS certificate
+    print("\n--- Crawling a Page with TLS certificate fetching ---")
 
     config = CrawlerRunConfig(
-        page_timeout=6000,
         capture_console_messages=True,
+        fetch_ssl_certificate=True,
     )
 
     response = await crawler.crawl(target_url, config=config)
@@ -193,15 +216,15 @@ async def main():
     print(f"Crawled HTML length: {len(response.html)}")
     print(f"Status Code: {response.status_code}")
     
-    if response.console_messages:
-        print(f"\n--- Captured {len(response.console_messages)} Console Messages ---")
-        for msg in response.console_messages:
-            print(f"[{msg['timestamp']:.2f}] Type: {msg['type'].upper()}, Text: {msg['text']}")
-            if msg['type'] == 'error' and 'stack' in msg:
-                print(f"  Stack: {msg['stack']}")
-        print("------------------------------------------")
+    if response.ssl_certificate:
+      cert = response.ssl_certificate
+      print(f"SSL Certificate Info:")
+      print(f"Issuer: {cert.issuer}")
+      print(f"Subject: {cert.subject}")
+      print(f"Valid From: {cert.valid_from}")
+      print(f"Valid Until: {cert.valid_until}")
+      print(f"Fingerprint (SHA256): {cert.fingerprint}")
     else:
-        print("\nNo console messages captured.")
-
+        print("\nNo TLS certificate fetched.")
 if __name__ == "__main__":
   asyncio.run(main())
