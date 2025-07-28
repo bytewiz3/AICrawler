@@ -495,6 +495,30 @@ class AsyncPlaywrightStrategy:
         tag="DOWNLOAD_ERROR",
         params={"error": str(e)},
       )
+  
+  async def capture_mhtml(self, page: Page) -> Optional[str]:
+    self.logger.info(message="Capturing page as MHTML.", tag="MHTML_CAPTURE")
+    try:
+      try:
+        await page.wait_for_load_state("domcontentloaded", timeout=5000)
+        await page.wait_for_load_state("networkidle", timeout=5000)
+        await page.wait_for_timeout(1000)
+      except PlaywrightTimeoutError:
+        self.logger.warning(message="Wait for load state timed out before MHTML capture.", tag="MHTML_CAPTURE")
+      except Exception as e:
+        self.logger.warning(message="Error during pre-MHTML load state wait: {error}", tag="MHTML_CAPTURE", params={"error": str(e)})
+      cdp_session = await page.context.new_cdp_session(page)
+      result = await cdp_session.send("Page.captureSnapshot", {"format": "mhtml"})
+      mhtml_content = result.get("data")
+      await cdp_session.detach()
+      if mhtml_content:
+        self.logger.info(message="MHTML capture complete. Size: {size} bytes.", tag="MHTML_CAPTURE", params={"size": len(mhtml_content)})
+      else:
+        self.logger.warning(message="MHTML capture returned no data.", tag="MHTML_CAPTURE")
+      return mhtml_content
+    except Exception as e:
+      self.logger.error(message="Failed to capture MHTML: {error}", tag="MHTML_CAPTURE_ERROR", params={"error": str(e)},)
+      return None
 
   async def crawl(self, url: str, config: Optional[CrawlerRunConfig] = None) -> AsyncCrawlResponse:
     config = config or CrawlerRunConfig()
@@ -622,11 +646,11 @@ class AsyncPlaywrightStrategy:
       if config.fetch_ssl_certificate and url.startswith("https://"):
         self.logger.info(message="Attempting to fetch SSL certificate for {url}.", tag="SSL_FETCH", params={"url": url})
         ssl_cert = SSLCertificate.from_url(url)
-      if ssl_cert:
-        self.logger.info(message="SSL certificate fetched successfully from {url}. Issuer: {issuer}", tag="SSL_FETCH", params={"url": url, "issuer": ssl_cert.issuer})
-      else:
-        self.logger.warning(message="Failed to fetch SSL certificate for {url}.", tag="SSL_FETCH", params={"url": url})
-      
+        if ssl_cert:
+          self.logger.info(message="SSL certificate fetched successfully from {url}. Issuer: {issuer}", tag="SSL_FETCH", params={"url": url, "issuer": ssl_cert.issuer})
+        else:
+          self.logger.warning(message="Failed to fetch SSL certificate for {url}.", tag="SSL_FETCH", params={"url": url})
+        
       self.logger.info(message="Navigating to {url}", tag="GOTO", params={"url": url})
       response = None
       try:
@@ -652,6 +676,9 @@ class AsyncPlaywrightStrategy:
           self.logger.info(message="Initiating iframe processing.", tag="IFRAME")
           page = await self.process_iframes(page)
 
+        if config.capture_mhtml:
+          mhtml_data = await self.capture_mhtml(page)
+            
         if config.screenshot:
           self.logger.info(message="Taking screenshot (intelligent).", tag="SCREENSHOT")
           screenshot_data = await self.take_screenshot(page, config)
@@ -705,7 +732,8 @@ class AsyncPlaywrightStrategy:
             html="", status_code=0, js_execution_result={"success": False, "error": f"Navigation failed: {str(e)}"},
             network_requests=captured_requests if config.capture_network_requests else None,
             console_messages=captured_console if config.capture_console_messages else None,
-            screenshot=None, downloaded_files=self._downloaded_files if self._downloaded_files else None
+            screenshot=None, downloaded_files=self._downloaded_files if self._downloaded_files else None,
+            mhtml_data=mhtml_data
           )
 
       return AsyncCrawlResponse(
@@ -716,7 +744,8 @@ class AsyncPlaywrightStrategy:
         console_messages=captured_console if config.capture_console_messages else None,
         screenshot=screenshot_data,
         downloaded_files=self._downloaded_files if self._downloaded_files else None,
-        ssl_certificate=ssl_cert
+        ssl_certificate=ssl_cert if config.fetch_ssl_certificate else None,
+        mhtml_data=mhtml_data
       )
     
     except Exception as e:
@@ -726,7 +755,8 @@ class AsyncPlaywrightStrategy:
         network_requests=captured_requests if config.capture_network_requests else None,
         console_messages=captured_console if config.capture_console_messages else None,
         screenshot=None, downloaded_files=self._downloaded_files if self._downloaded_files else None,
-        ssl_certificate=ssl_cert
+        ssl_certificate=ssl_cert if config.fetch_ssl_certificate else None,
+        mhtml_data=mhtml_data
       )
     
     finally:

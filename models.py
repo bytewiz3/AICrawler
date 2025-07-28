@@ -11,6 +11,7 @@ class AsyncCrawlResponse(BaseModel):
   network_requests: Optional[List[Dict[str, Any]]] = None
   console_messages: Optional[List[Dict[str, Any]]] = None
   ssl_certificate: Optional[SSLCertificate] = None
+  mhtml_data: Optional[str] = None
 
   class Config:
     arbitrary_types_allowed = True
@@ -32,6 +33,7 @@ class CrawlResult(BaseModel):
   console_messages: Optional[List[Dict[str, Any]]] = None
   markdown: Optional[MarkdownGenerationResult] = None
   ssl_certificate: Optional[SSLCertificate] = None
+  mhtml: Optional[str] = None
 
   class Config:
     arbitrary_types_allowed = True

@@ -204,27 +204,43 @@ async def main():
     #     print("\nNo console messages captured.")
 
     # Example 10: capture TLS certificate
-    print("\n--- Crawling a Page with TLS certificate fetching ---")
+    # print("\n--- Crawling a Page with TLS certificate fetching ---")
 
+    # config = CrawlerRunConfig(
+    #     capture_console_messages=True,
+    #     fetch_ssl_certificate=True,
+    # )
+
+    # response = await crawler.crawl(target_url, config=config)
+
+    # print(f"Crawled HTML length: {len(response.html)}")
+    # print(f"Status Code: {response.status_code}")
+    
+    # if response.ssl_certificate:
+    #   cert = response.ssl_certificate
+    #   print(f"SSL Certificate Info:")
+    #   print(f"Issuer: {cert.issuer}")
+    #   print(f"Subject: {cert.subject}")
+    #   print(f"Valid From: {cert.valid_from}")
+    #   print(f"Valid Until: {cert.valid_until}")
+    #   print(f"Fingerprint (SHA256): {cert.fingerprint}")
+    # else:
+    #     print("\nNo TLS certificate fetched.")
+
+    # Example 11: capture mhtml
     config = CrawlerRunConfig(
-        capture_console_messages=True,
-        fetch_ssl_certificate=True,
+      capture_mhtml=True,
     )
 
     response = await crawler.crawl(target_url, config=config)
 
     print(f"Crawled HTML length: {len(response.html)}")
     print(f"Status Code: {response.status_code}")
-    
-    if response.ssl_certificate:
-      cert = response.ssl_certificate
-      print(f"SSL Certificate Info:")
-      print(f"Issuer: {cert.issuer}")
-      print(f"Subject: {cert.subject}")
-      print(f"Valid From: {cert.valid_from}")
-      print(f"Valid Until: {cert.valid_until}")
-      print(f"Fingerprint (SHA256): {cert.fingerprint}")
+
+    if response.mhtml_data:
+      print(f"\nMHTML capture successful. Size: {len(response.mhtml_data)} bytes.")
+      print(f"HTML (first 200 chars):\n{response.mhtml_data[:200]}...")
     else:
-        print("\nNo TLS certificate fetched.")
+      print("\nNo MHTML data captured.")
 if __name__ == "__main__":
   asyncio.run(main())
