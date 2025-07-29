@@ -733,7 +733,7 @@ class AsyncPlaywrightStrategy:
             network_requests=captured_requests if config.capture_network_requests else None,
             console_messages=captured_console if config.capture_console_messages else None,
             screenshot=None, downloaded_files=self._downloaded_files if self._downloaded_files else None,
-            mhtml_data=mhtml_data
+            mhtml_data=mhtml_data if config.capture_mhtml else None
           )
 
       return AsyncCrawlResponse(
@@ -745,7 +745,7 @@ class AsyncPlaywrightStrategy:
         screenshot=screenshot_data,
         downloaded_files=self._downloaded_files if self._downloaded_files else None,
         ssl_certificate=ssl_cert if config.fetch_ssl_certificate else None,
-        mhtml_data=mhtml_data
+        mhtml_data=mhtml_data if config.capture_mhtml else None
       )
     
     except Exception as e:
@@ -756,7 +756,7 @@ class AsyncPlaywrightStrategy:
         console_messages=captured_console if config.capture_console_messages else None,
         screenshot=None, downloaded_files=self._downloaded_files if self._downloaded_files else None,
         ssl_certificate=ssl_cert if config.fetch_ssl_certificate else None,
-        mhtml_data=mhtml_data
+        mhtml_data=mhtml_data if config.capture_mhtml else None
       )
     
     finally:

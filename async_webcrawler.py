@@ -4,7 +4,7 @@ from typing import Optional
 from .async_logger import AsyncLogger
 import time
 from .models import CrawlResult, ScrapingResult, MarkdownGenerationResult
-from .utils import fast_format_html
+from .utils import fast_format_html, RobotsParser
 
 class AsyncWebCrawler:
   def __init__(
@@ -19,6 +19,7 @@ class AsyncWebCrawler:
       browser_config=self.browser_config
     )
     self.ready = False
+    self.robots_parser = RobotsParser()
 
   async def start(self):
     if not self.ready:
@@ -101,6 +102,21 @@ class AsyncWebCrawler:
 
     self.logger.info(f"Starting single crawl for: {url}", tag="ARUN")
     start_time = time.perf_counter()
+
+    if url.startswith(("http://", "https://")) and config.check_robots_txt:
+      ua_for_robots = config.user_agent or self.crawler_strategy.ua_generator.generate(
+        **(config.user_agent_generator_config or {})
+      )
+      
+      if not await self.robots_parser.can_fetch(url, ua_for_robots): #
+        return CrawlResult(
+          url=url,
+          html="",
+          status_code=403,
+          success=False,
+          error_message="Access denied by robots.txt",
+          links={"internal":[], "external":[]}
+        )
 
     try:
       async_response = await self.crawler_strategy.crawl(

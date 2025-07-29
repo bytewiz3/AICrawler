@@ -25,7 +25,7 @@ class CrawlerRunConfig:
      user_agent: Optional[str] = None, override_navigator: bool = False, simulate_user: bool = False, magic: bool = False, 
      scan_full_page: bool = False, scroll_delay: float = 0.1, capture_console_messages: bool = False, 
      scraping_strategy: Optional[ScrapingStrategy] = None, markdown_generator: Optional[MarkdownGenerationStrategy] = None,
-     prettify: bool = False, fetch_ssl_certificate: bool = False, capture_mhtml: bool = False
+     prettify: bool = False, fetch_ssl_certificate: bool = False, capture_mhtml: bool = False, check_robots_txt: bool = False
   ):
     self.wait_until = wait_until
     self.page_timeout = page_timeout
@@ -49,3 +49,4 @@ class CrawlerRunConfig:
     self.prettify = prettify
     self.fetch_ssl_certificate = fetch_ssl_certificate
     self.capture_mhtml = capture_mhtml
+    self.check_robots_txt = check_robots_txt
