@@ -1,10 +1,11 @@
 from .async_crawler_strategy import AsyncPlaywrightStrategy
 from .async_configs import CrawlerRunConfig, BrowserConfig
-from typing import Optional
+from typing import Optional, List
 from .async_logger import AsyncLogger
 import time
 from .models import CrawlResult, ScrapingResult, MarkdownGenerationResult
 from .utils import fast_format_html, RobotsParser
+import asyncio
 
 class AsyncWebCrawler:
   def __init__(
@@ -88,6 +89,29 @@ class AsyncWebCrawler:
       screenshot=screenshot_data,
       markdown=markdown_result,
     )
+
+  async def arun_many(self, urls: List[str], config: Optional[CrawlerRunConfig] = None) -> List[CrawlResult]:
+    if not self.ready: 
+      await self.start()
+    config = config or CrawlerRunConfig()
+    
+    self.logger.info(f"Starting concurrent crawl for {len(urls)} URLs.", tag="ARUN_MANY")
+    start_time = time.perf_counter()
+    
+    tasks = [self.arun(url, config) for url in urls]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    final_results = []
+    for result in results:
+      if isinstance(result, Exception):
+        self.logger.error(f"Error during concurrent crawl: {result}", tag="ARUN_MANY_ERROR")
+        final_results.append(CrawlResult(url="", html="", status_code=0, success=False, error_message=str(result)))
+      else:
+        final_results.append(result)
+
+    self.logger.info(f"Finished concurrent crawl for {len(urls)} URLs in {time.perf_counter() - start_time:.2f}s", tag="ARUN_MANY")
+    
+    return final_results
 
   async def arun(
     self,
