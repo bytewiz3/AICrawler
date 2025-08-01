@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import html2text
+from html2text import CustomHTML2Text
 from typing import Optional
 from .models import MarkdownGenerationResult
 from .content_filter_strategy import ContentFilterStrategy, NoContentFilter
