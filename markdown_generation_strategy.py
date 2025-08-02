@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-from html2text import CustomHTML2Text
 from typing import Optional
 from .models import MarkdownGenerationResult
 from .content_filter_strategy import ContentFilterStrategy, NoContentFilter
@@ -14,7 +13,6 @@ class MarkdownGenerationStrategy(ABC):
 class DefaultMarkdownGenerator(MarkdownGenerationStrategy):
   def __init__(self, content_filter: Optional[ContentFilterStrategy] = None):
     super().__init__(content_filter)
-    self.h = html2text.HTML2Text()
     self.h.ignore_images = False
     self.h.ignore_links = False
     self.h.body_width = 0
