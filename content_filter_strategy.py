@@ -1,8 +1,11 @@
 import re
-import math
 from abc import ABC, abstractmethod
-from typing import List, Optional, Set, Dict
-from bs4 import BeautifulSoup, Tag, Comment
+from typing import List, Optional, Set, Dict, Tuple
+from collections import deque
+
+from bs4 import BeautifulSoup, Tag, Comment, NavigableString
+from rank_bm25 import BM25Okapi
+from snowballstemmer import stemmer
 
 class RelevantContentFilter(ABC):
     def __init__(self, user_query: Optional[str] = None):
@@ -37,6 +40,88 @@ class RelevantContentFilter(ABC):
             return True
             
         return False
+    
+    def extract_page_query(self, soup: BeautifulSoup) -> str:
+        if self.user_query:
+            return self.user_query
+
+        query_parts = []
+        if soup.title and soup.title.string:
+            query_parts.append(soup.title.string)
+        if soup.find("h1"):
+            query_parts.append(soup.find("h1").get_text())
+
+        meta_desc = soup.find("meta", attrs={"name": "description"})
+        if meta_desc and meta_desc.get("content"):
+            query_parts.append(meta_desc["content"])
+        
+        return " ".join(filter(None, query_parts))
+
+    def extract_text_chunks(self, body: Tag) -> List[Tuple[int, str, Tag]]:
+        chunks = []
+        significant_tags = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "pre", "blockquote", "td"}
+        
+        for i, tag in enumerate(body.find_all(significant_tags)):
+            if self.is_excluded(tag):
+                continue
+            
+            text = tag.get_text(strip=True)
+            if len(text.split()) >= self.min_word_count:
+                chunks.append((i, text, tag))
+        return chunks
+
+class BM25ContentFilter(RelevantContentFilter):
+    def __init__(
+        self,
+        user_query: Optional[str] = None,
+        bm25_threshold: float = 0.5,
+        language: str = "english",
+    ):
+        super().__init__(user_query)
+        self.bm25_threshold = bm25_threshold
+        try:
+            self.stemmer = stemmer(language)
+        except Exception:
+            print(f"Warning: Stemmer for '{language}' not found. Falling back to no stemming.")
+            self.stemmer = None
+
+    def _tokenize(self, text: str) -> List[str]:
+        tokens = re.findall(r'\b\w+\b', text.lower())
+        if self.stemmer:
+            return self.stemmer.stemWords(tokens)
+        return tokens
+
+    def filter_content(self, html: str) -> List[str]:
+        if not html:
+            return []
+
+        soup = BeautifulSoup(html, "lxml")
+        if not soup.body:
+            return []
+
+        query = self.extract_page_query(soup)
+        if not query:
+            return []
+        tokenized_query = self._tokenize(query)
+
+        candidates = self.extract_text_chunks(soup.body)
+        if not candidates:
+            return []
+
+        corpus_texts = [text for _, text, _ in candidates]
+        tokenized_corpus = [self._tokenize(doc) for doc in corpus_texts]
+
+        bm25 = BM25Okapi(tokenized_corpus)
+        scores = bm25.get_scores(tokenized_query)
+
+        selected_chunks = []
+        for i, score in enumerate(scores):
+            if score >= self.bm25_threshold:
+                original_index, _, source_tag = candidates[i]
+                selected_chunks.append((original_index, str(source_tag)))
+
+        selected_chunks.sort(key=lambda x: x[0])
+        return [chunk_html for _, chunk_html in selected_chunks]
 
 class PruningContentFilter(RelevantContentFilter):
     def __init__(self, user_query: Optional[str] = None, threshold: float = 0.45):
