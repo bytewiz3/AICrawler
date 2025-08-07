@@ -48,6 +48,31 @@ class Link(BaseModel):
   total_score: Optional[float] = None
   meta: Optional[Dict] = None
 
+class MediaItem(BaseModel):
+    src: Optional[str] = ""
+    data: Optional[str] = ""
+    alt: Optional[str] = ""
+    desc: Optional[str] = ""
+    score: Optional[int] = 0
+    type: str = "image"
+    group_id: Optional[int] = 0
+    format: Optional[str] = None
+    width: Optional[int] = None
+
+class Media(BaseModel):
+    images: List[MediaItem] = []
+    videos: List[
+        MediaItem
+    ] = []  # Using MediaItem model for now, can be extended with Video model if needed
+    audios: List[
+        MediaItem
+    ] = []  # Using MediaItem model for now, can be extended with Audio model if needed
+    tables: List[Dict] = []  # Table data extracted from HTML tables
+
+class Links(BaseModel):
+    internal: List[Link] = []
+    external: List[Link] = []
+
 class ScrapingResult(BaseModel):
   cleaned_html: str
   media: Dict[str, Any]
