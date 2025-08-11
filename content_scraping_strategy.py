@@ -1,16 +1,29 @@
 from abc import ABC, abstractmethod
 from .async_logger import AsyncLogger
 from .models import ScrapingResult, Media, MediaItem, Links, Link
+import re
+from lxml import etree
+from lxml import html as lhtml
+import asyncio
+from typing import Dict, Any
 
 class ScrapingStrategy(ABC):
   """Abstract base class for scraping strategies."""
-  def __init__(self): self.logger = AsyncLogger() # A logger is needed
-  @abstractmethod
-  def scrap(self, url: str, html: str, **kwargs) -> ScrapingResult: pass
+  def __init__(self): self.logger = AsyncLogger()
 
-class WebScrapingStrategy(ScrapingStrategy):
+  @abstractmethod
+  def scrap(self, url: str, html: str, **kwargs) -> ScrapingResult:
+    pass
+
+  @abstractmethod
+  async def ascrap(self, url: str, html: str, **kwargs) -> ScrapingResult:
+    pass
+
+class LXMLWebScrapingStrategy(ScrapingStrategy):
   def __init__(self, logger=None):
     self.logger = logger
+    self.DIMENSION_REGEX = re.compile(r"(\d+)(\D*)")
+    self.BASE64_PATTERN = re.compile(r'data:image/[^;]+;base64,([^"]+)')
 
   def _log(self, level, message, tag="SCRAPE", **kwargs):
     if self.logger:
@@ -68,3 +81,19 @@ class WebScrapingStrategy(ScrapingStrategy):
       links=links,
       metadata=raw_result.get("metadata", {}),
     )
+  
+  async def ascrap(self, url: str, html: str, **kwargs) -> ScrapingResult:
+    return await asyncio.to_thread(self.scrap, url, html, **kwargs)
+  
+  def process_element(self, url, element: lhtml.HtmlElement, **kwargs) -> Dict[str, Any]:
+    media = {"images": [], "videos": [], "audios": [], "tables": []}
+    internal_links_dict = {}
+    external_links_dict = {}
+    self._process_element(
+        url, element, media, internal_links_dict, external_links_dict, **kwargs
+    )
+    return {
+        "media": media,
+        "internal_links_dict": internal_links_dict,
+        "external_links_dict": external_links_dict,
+    }
